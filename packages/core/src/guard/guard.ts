@@ -27,7 +27,7 @@ export interface GuardReport {
   flag: { name: string; description: string } | null;
   suggestions: CodeSuggestion[];
   droppedSuggestions: number;
-  usage?: LlmUsage & { model: string };
+  usage?: LlmUsage & { model: string; failovers: number };
   filesChanged: number;
   filesConsidered: number;
   /** Rough, clearly-labelled estimate of manual work replaced. */
@@ -116,7 +116,7 @@ export async function analyzePullRequest(input: {
             }))
           : [],
         droppedSuggestions: result.droppedSuggestions,
-        usage: { ...result.usage, model: result.model },
+        usage: { ...result.usage, model: result.model, failovers: result.failovers },
         estimatedMinutesSaved: risky
           ? 15 + 5 * result.suggestions.length + 3 * input.policy.environments.length
           : 5,

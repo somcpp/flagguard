@@ -20,6 +20,8 @@ export * from "./diff/parse.js";
 export * from "./risk/rules.js";
 export * from "./risk/llm-review.js";
 export * from "./llm/client.js";
+export * from "./llm/keyhopper.js";
+export * from "./llm/factory.js";
 export * from "./guard/guard.js";
 export * from "./guard/comment.js";
 

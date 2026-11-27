@@ -21,7 +21,7 @@ export const EnvSchema = z.object({
   FLAGSMITH_API_URL: z.preprocess(emptyToUndefined, z.url().default("https://api.flagsmith.com")),
   LLM_PROVIDER: z.preprocess(
     emptyToUndefined,
-    z.enum(["gemini", "openai-compatible"]).default("gemini"),
+    z.enum(["auto", "keyhopper", "gemini", "openai-compatible"]).default("auto"),
   ),
   LLM_API_KEY: optionalString,
   LLM_MODEL: optionalString,

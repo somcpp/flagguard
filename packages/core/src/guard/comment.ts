@@ -135,7 +135,7 @@ function stateLabel(record: RolloutRecord): string {
 
 function finish(lines: string[], report: GuardReport): string {
   const usage = report.usage
-    ? ` · ${report.usage.model}, ${report.usage.inputTokens.toLocaleString("en-US")} in / ${report.usage.outputTokens.toLocaleString("en-US")} out tokens`
+    ? ` · ${report.usage.model}${report.usage.failovers > 0 ? ` (after ${report.usage.failovers} failover${report.usage.failovers > 1 ? "s" : ""})` : ""}, ${report.usage.inputTokens.toLocaleString("en-US")} in / ${report.usage.outputTokens.toLocaleString("en-US")} out tokens`
     : "";
   lines.push(
     "---",

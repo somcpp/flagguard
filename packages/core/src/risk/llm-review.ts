@@ -53,6 +53,8 @@ export interface LlmReviewResult {
   droppedSuggestions: number;
   usage: LlmUsage;
   model: string;
+  /** Keys/models/providers that failed before one answered. */
+  failovers: number;
 }
 
 const SYSTEM_PROMPT = `You are FlagGuard, a release-safety reviewer. You review pull request diffs and decide
@@ -177,5 +179,6 @@ export async function reviewWithLlm(
     droppedSuggestions: dropped,
     usage: response.usage,
     model: response.model,
+    failovers: response.failovers ?? 0,
   };
 }

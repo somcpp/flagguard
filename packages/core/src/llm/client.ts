@@ -10,6 +10,8 @@ export interface LlmResponse {
   text: string;
   usage: LlmUsage;
   model: string;
+  /** Keys/models/providers that failed before one answered (multi-key clients). */
+  failovers?: number;
 }
 
 export interface LlmRequest {
@@ -33,7 +35,7 @@ export class LlmError extends FlagGuardError {
   }
 }
 
-interface ClientOptions {
+export interface ClientOptions {
   apiKey: string;
   model?: string;
   baseUrl?: string;
@@ -204,22 +206,4 @@ export class OpenAiCompatibleClient implements LlmClient {
       },
     };
   }
-}
-
-/** Build the configured client, or null when no key is set (rules-only mode). */
-export function createLlmClient(config: {
-  LLM_PROVIDER: "gemini" | "openai-compatible";
-  LLM_API_KEY?: string | undefined;
-  LLM_MODEL?: string | undefined;
-  LLM_BASE_URL?: string | undefined;
-}): LlmClient | null {
-  if (!config.LLM_API_KEY) return null;
-  const options: ClientOptions = {
-    apiKey: config.LLM_API_KEY,
-    ...(config.LLM_MODEL ? { model: config.LLM_MODEL } : {}),
-    ...(config.LLM_BASE_URL ? { baseUrl: config.LLM_BASE_URL } : {}),
-  };
-  return config.LLM_PROVIDER === "gemini"
-    ? new GeminiClient(options)
-    : new OpenAiCompatibleClient(options);
 }

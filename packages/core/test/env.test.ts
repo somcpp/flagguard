@@ -8,7 +8,7 @@ describe("loadEnv", () => {
 
     expect(env.FLAGSMITH_PROJECT_ID).toBe(42);
     expect(env.FLAGSMITH_API_URL).toBe("https://api.flagsmith.com");
-    expect(env.LLM_PROVIDER).toBe("gemini");
+    expect(env.LLM_PROVIDER).toBe("auto");
     expect(env.LLM_API_KEY).toBeUndefined();
     expect(env.LOG_LEVEL).toBe("info");
   });
