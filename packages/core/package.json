@@ -20,7 +20,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20.12"
+    "node": ">=22"
   },
   "devDependencies": {
     "@types/picomatch": "^4.0.3"
