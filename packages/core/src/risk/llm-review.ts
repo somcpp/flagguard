@@ -49,8 +49,10 @@ export interface LlmReviewResult {
   review: LlmReview;
   /** Suggestions that target only lines added in this diff (safe to post as GitHub suggestions). */
   suggestions: CodeSuggestion[];
-  /** Suggestions dropped because they pointed outside the added lines. */
+  /** Suggestions that failed validation, even after one repair attempt. */
   droppedSuggestions: number;
+  /** Suggestions that passed only after the model fixed them on feedback. */
+  repairedSuggestions: number;
   usage: LlmUsage;
   model: string;
   /** Keys/models/providers that failed before one answered. */
@@ -181,29 +183,76 @@ export function reindent(replacement: string, originalLines: string[]): string {
   return lines.map((l) => (l.trim() === "" ? l : pad + l)).join("\n");
 }
 
-/** Keep only suggestions that replace a contiguous run of lines this PR added. */
+export interface RejectedSuggestion {
+  suggestion: LlmReview["suggestions"][number];
+  reason: string;
+}
+
+const usesNewFlag = (replacement: string): boolean =>
+  replacement.includes(FLAG_PLACEHOLDER) || replacement.includes("<FLAG>");
+
+/** Compact "12-14, 20" description of a file's added lines, for repair feedback. */
+function addedRanges(file: FileDiff): string {
+  const ranges: string[] = [];
+  let start: number | null = null;
+  let prev: number | null = null;
+  for (const { line } of file.added) {
+    if (start !== null && prev !== null && line === prev + 1) {
+      prev = line;
+      continue;
+    }
+    if (start !== null && prev !== null)
+      ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+    start = line;
+    prev = line;
+  }
+  if (start !== null && prev !== null)
+    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+  return ranges.join(", ") || "none";
+}
+
+/**
+ * Keep only suggestions that (1) replace a contiguous run of lines this PR added
+ * and (2) gate on the NEW flag. Everything else is rejected with a reason the
+ * model can act on.
+ */
 export function validateSuggestions(
   suggestions: LlmReview["suggestions"],
   files: FileDiff[],
-): { valid: CodeSuggestion[]; dropped: number } {
+): { valid: CodeSuggestion[]; dropped: number; rejected: RejectedSuggestion[] } {
   const valid: CodeSuggestion[] = [];
+  const rejected: RejectedSuggestion[] = [];
   for (const s of suggestions) {
     const file = files.find((f) => f.path === s.file);
-    if (!file || s.endLine < s.startLine) continue;
+    if (!file) {
+      rejected.push({ suggestion: s, reason: `${s.file} is not part of this diff` });
+      continue;
+    }
     const added = new Map(file.added.map((a) => [a.line, a.content]));
     const originals: string[] = [];
-    let ok = true;
-    for (let line = s.startLine; line <= s.endLine; line++) {
+    let ok = s.endLine >= s.startLine;
+    for (let line = s.startLine; ok && line <= s.endLine; line++) {
       const content = added.get(line);
-      if (content === undefined) {
-        ok = false;
-        break;
-      }
-      originals.push(content);
+      if (content === undefined) ok = false;
+      else originals.push(content);
     }
-    if (ok) valid.push({ ...s, replacement: reindent(s.replacement, originals) });
+    if (!ok) {
+      rejected.push({
+        suggestion: s,
+        reason: `lines ${s.startLine}-${s.endLine} are not all lines added by this PR (added lines in ${s.file}: ${addedRanges(file)})`,
+      });
+      continue;
+    }
+    if (!usesNewFlag(s.replacement)) {
+      rejected.push({
+        suggestion: s,
+        reason: `the replacement never checks the new flag; it must pass the string literal "${FLAG_PLACEHOLDER}" to the flag check instead of reusing another flag or flag variable`,
+      });
+      continue;
+    }
+    valid.push({ ...s, replacement: reindent(s.replacement, originals) });
   }
-  return { valid, dropped: suggestions.length - valid.length };
+  return { valid, dropped: rejected.length, rejected };
 }
 
 function extractJson(text: string): unknown {
@@ -214,7 +263,9 @@ function extractJson(text: string): unknown {
   return JSON.parse(trimmed) as unknown;
 }
 
-/** Ask the LLM for a second opinion on the diff. Throws on malformed output. */
+const RepairSchema = z.object({ suggestions: LlmReviewSchema.shape.suggestions });
+
+/** Ask a review, then give the model one chance to fix any suggestion that failed validation. */
 export async function reviewWithLlm(
   llm: LlmClient,
   files: FileDiff[],
@@ -222,19 +273,62 @@ export async function reviewWithLlm(
   pr: { title: string; body?: string | undefined },
   context: FileContext = {},
 ): Promise<LlmReviewResult> {
-  const response = await llm.complete({
-    system: SYSTEM_PROMPT,
-    prompt: buildPrompt(files, rules, pr, context),
-    json: true,
-  });
+  const prompt = buildPrompt(files, rules, pr, context);
+  const response = await llm.complete({ system: SYSTEM_PROMPT, prompt, json: true });
   const review = LlmReviewSchema.parse(extractJson(response.text));
-  const { valid, dropped } = validateSuggestions(review.suggestions, files);
+  const first = validateSuggestions(review.suggestions, files);
+
+  const usage = { ...response.usage };
+  let failovers = response.failovers ?? 0;
+  let model = response.model;
+  let suggestions = first.valid;
+  let dropped = first.dropped;
+  let repaired = 0;
+
+  if (first.rejected.length > 0) {
+    // Self-correction: say precisely what was wrong and let the model try once more.
+    const feedback = first.rejected
+      .map(
+        (r, i) =>
+          `${i + 1}. ${r.suggestion.file}:${r.suggestion.startLine}-${r.suggestion.endLine} was rejected: ${r.reason}.\n   Your replacement was:\n${r.suggestion.replacement}`,
+      )
+      .join("\n");
+    try {
+      const retry = await llm.complete({
+        system: SYSTEM_PROMPT,
+        prompt: `${prompt}\n\nYour flag is "${review.flag.name}". These suggestions you proposed were rejected by validation:\n${feedback}\n\nReturn JSON {"suggestions": [...]} with corrected versions of ONLY these suggestions, following every rule. Return an empty list for any you cannot fix correctly.`,
+        json: true,
+      });
+      usage.inputTokens += retry.usage.inputTokens;
+      usage.outputTokens += retry.usage.outputTokens;
+      failovers += retry.failovers ?? 0;
+      model = retry.model;
+      const second = validateSuggestions(
+        RepairSchema.parse(extractJson(retry.text)).suggestions,
+        files,
+      );
+      const room = Math.max(0, 3 - suggestions.length);
+      // Models often echo back suggestions that were already fine; only count genuinely new ones.
+      const overlaps = (a: CodeSuggestion, b: CodeSuggestion): boolean =>
+        a.file === b.file && a.startLine <= b.endLine && b.startLine <= a.endLine;
+      const fixed = second.valid
+        .filter((candidate) => !suggestions.some((kept) => overlaps(kept, candidate)))
+        .slice(0, room);
+      suggestions = [...suggestions, ...fixed];
+      repaired = fixed.length;
+      dropped = first.dropped - repaired;
+    } catch {
+      // The first verdict stands; an unrepaired suggestion is simply not posted.
+    }
+  }
+
   return {
     review,
-    suggestions: valid,
+    suggestions,
     droppedSuggestions: dropped,
-    usage: response.usage,
-    model: response.model,
-    failovers: response.failovers ?? 0,
+    repairedSuggestions: repaired,
+    usage,
+    model,
+    failovers,
   };
 }

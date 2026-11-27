@@ -81,7 +81,7 @@ export function renderGuardComment(options: {
 
   if (report.suggestions.length > 0) {
     lines.push(
-      `💡 I left **${report.suggestions.length} suggested change${report.suggestions.length > 1 ? "s" : ""}** inline that wrap the new code in this flag. Review them, then click _Commit suggestion_.`,
+      `💡 I left **${report.suggestions.length} suggested change${report.suggestions.length > 1 ? "s" : ""}** inline that wrap the new code in this flag. Review them, then click _Commit suggestion_.${report.repairedSuggestions > 0 ? ` (${report.repairedSuggestions} self-corrected after failing validation the first time.)` : ""}`,
       "",
     );
   } else if (report.droppedSuggestions > 0) {

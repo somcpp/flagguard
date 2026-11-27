@@ -32,6 +32,8 @@ export interface GuardReport {
   flag: { name: string; description: string } | null;
   suggestions: CodeSuggestion[];
   droppedSuggestions: number;
+  /** Suggestions the AI fixed after validation feedback (self-correction). */
+  repairedSuggestions: number;
   usage?: LlmUsage & { model: string; failovers: number };
   filesChanged: number;
   filesConsidered: number;
@@ -153,6 +155,7 @@ export async function analyzePullRequest(input: {
         flag: risky ? { name: flagName, description: result.review.flag.description } : null,
         suggestions: risky ? suggestions : [],
         droppedSuggestions: result.droppedSuggestions + (named.length - suggestions.length),
+        repairedSuggestions: result.repairedSuggestions,
         usage: { ...result.usage, model: result.model, failovers: result.failovers },
         estimatedMinutesSaved: risky
           ? 15 + 5 * result.suggestions.length + 3 * input.policy.environments.length
@@ -182,6 +185,7 @@ export async function analyzePullRequest(input: {
       : null,
     suggestions: [],
     droppedSuggestions: 0,
+    repairedSuggestions: 0,
     estimatedMinutesSaved: risky ? 10 + 3 * input.policy.environments.length : 2,
   };
 }
