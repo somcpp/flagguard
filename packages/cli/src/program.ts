@@ -136,7 +136,8 @@ export function createProgram(
   program
     .command("doctor")
     .description("check configuration, Flagsmith access and the metrics endpoint")
-    .action(async () => {
+    .option("--llm", "also send one tiny test request per LLM key and model (uses quota)")
+    .action(async (opts: { llm?: boolean }) => {
       let problems = 0;
       const ok = (msg: string): void => {
         io.out(`${pc.green("✔")} ${msg}`);
@@ -230,7 +231,11 @@ export function createProgram(
           ok(
             `LLM via keyhopper: ${providers.map((p) => `${p.provider} (${p.keys} key${p.keys === 1 ? "" : "s"})`).join(" → ")}`,
           );
-          for (const result of await llm.check()) {
+          if (!opts.llm)
+            io.out(
+              pc.dim("    (run doctor --llm to test each key; costs one tiny request per key)"),
+            );
+          for (const result of opts.llm ? await llm.check() : []) {
             const label = `${result.provider}/${result.model} [${result.key}]`;
             if (result.ok) ok(`  ${label} ${pc.dim(`${String(result.ms ?? "?")}ms`)}`);
             else
