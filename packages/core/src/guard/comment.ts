@@ -84,6 +84,11 @@ export function renderGuardComment(options: {
       `💡 I left **${report.suggestions.length} suggested change${report.suggestions.length > 1 ? "s" : ""}** inline that wrap the new code in this flag. Review them, then click _Commit suggestion_.`,
       "",
     );
+  } else if (report.droppedSuggestions > 0) {
+    lines.push(
+      `💡 The AI proposed ${report.droppedSuggestions} code change${report.droppedSuggestions > 1 ? "s" : ""}, but ${report.droppedSuggestions > 1 ? "they" : "it"} failed validation (wrong lines, or not gated on \`${report.flag.name}\`), so none ${report.droppedSuggestions > 1 ? "were" : "was"} posted. Wrap the new code in a check for this flag manually.`,
+      "",
+    );
   }
 
   const stages = policy.rollout.stages.map((s) => `${s}%`).join(" → ");

@@ -230,25 +230,23 @@ async function onPullRequest(
     (report.flag ? `\n${flagMarker(report.flag.name)}` : "");
   const { created } = await github.upsertComment(pr.number, GUARD_COMMENT_MARKER, body);
 
-  // Suggestions are posted once per flag name, so every push doesn't duplicate them.
-  // If the flag was renamed, earlier suggestions are hidden as outdated (never deleted).
-  const suggestedMarker = report.flag ? `<!-- flagguard:suggested=${report.flag.name} -->` : "";
-  const alreadySuggested = comments.some((c) => c.body.includes(suggestedMarker));
-  if (report.flag && report.suggestions.length > 0 && !alreadySuggested) {
-    try {
-      for (const old of await github.listReviewComments(pr.number)) {
-        if (old.body.includes("<!-- flagguard:suggestion -->")) {
-          await github.minimizeAsOutdated(old.node_id);
-        }
-      }
-      await github.suggest(pr.number, pr.head.sha, report.flag.name, report.suggestions);
-      const guard = (await github.listIssueComments(pr.number)).find((c) =>
-        c.body.includes(GUARD_COMMENT_MARKER),
-      );
-      if (guard) await github.updateComment(guard.id, `${guard.body}\n${suggestedMarker}`);
-    } catch (error) {
-      logger.warn("could not post code suggestions", { error: (error as Error).message });
+  // Inline suggestions, derived from the review comments themselves (stateless):
+  // - suggestions for another flag name (e.g. before a rename) are hidden as outdated, never deleted
+  // - suggestions for the current flag are posted once, not on every push
+  try {
+    const flagName = report.flag?.name;
+    const ours = (await github.listReviewComments(pr.number)).filter((c) =>
+      c.body.includes("<!-- flagguard:suggestion -->"),
+    );
+    for (const old of ours) {
+      if (!flagName || !old.body.includes(flagName)) await github.minimizeAsOutdated(old.node_id);
     }
+    const alreadySuggested = flagName ? ours.some((c) => c.body.includes(flagName)) : false;
+    if (flagName && report.suggestions.length > 0 && !alreadySuggested) {
+      await github.suggest(pr.number, pr.head.sha, flagName, report.suggestions);
+    }
+  } catch (error) {
+    logger.warn("could not update code suggestions", { error: (error as Error).message });
   }
 
   if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY, body + "\n");
