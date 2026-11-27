@@ -15,6 +15,7 @@ import { Command, Option } from "commander";
 import pc from "picocolors";
 import { type Context, createCliLogger, createContext, type GlobalOptions } from "./context.js";
 import { formatAudit, formatHealth, formatResult, formatStatus } from "./format.js";
+import { startDashboard } from "./dashboard/server.js";
 import { guardLocal, llmFromEnv, runGitHub } from "./guard-commands.js";
 
 export interface IO {
@@ -528,6 +529,44 @@ export function createProgram(
         process.exitCode = EXIT.error;
       }
     });
+
+  /* -------------------------------- dashboard -------------------------------- */
+
+  program
+    .command("dashboard")
+    .description("local web dashboard: rollouts, approvals, health and the agent's activity")
+    .option("-p, --port <port>", "port to listen on", "4000")
+    .option(
+      "--watch",
+      "run the agent loop here: watch health and pull the kill switch on a regression",
+    )
+    .option("-i, --interval <seconds>", "seconds between health samples", "5")
+    .option("--flag <name...>", "flags to show before FlagGuard has acted on them")
+    .action(
+      run(
+        async (ctx, opts: { port: string; watch?: boolean; interval: string; flag?: string[] }) => {
+          const dashboard = await startDashboard(ctx, {
+            port: Number(opts.port) || 4000,
+            watch: opts.watch ?? false,
+            intervalSeconds: Number(opts.interval) || 5,
+            ...(opts.flag ? { flags: opts.flag } : {}),
+            logger: ctx.logger,
+          });
+          io.out(`🛡️  FlagGuard dashboard on ${pc.bold(dashboard.url)}`);
+          io.out(
+            pc.dim(
+              `   backend: ${ctx.backend.kind} · metrics: ${ctx.metricsUrl ?? "none"} · agent loop: ${opts.watch && ctx.metricsUrl ? "on" : "off"}`,
+            ),
+          );
+          await new Promise<void>((resolve) => {
+            process.once("SIGINT", () => {
+              void dashboard.close().then(resolve);
+            });
+          });
+          return EXIT.ok;
+        },
+      ),
+    );
 
   /* ---------------------------------- audit ---------------------------------- */
 

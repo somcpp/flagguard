@@ -1,0 +1,1829 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlagGuard</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l6 2.2v4.3c0 3.6-2.5 6.3-6 7.5-3.5-1.2-6-3.9-6-7.5V3.2z' fill='%232a78d6'/%3E%3C/svg%3E"
+    />
+    <style>
+      /* ---------- tokens (dataviz reference palette; light + dark selected, not flipped) ---------- */
+      :root {
+        color-scheme: light;
+        --page: #f9f9f7;
+        --surface: #fcfcfb;
+        --surface-2: #f3f2ef;
+        --ink-1: #0b0b0b;
+        --ink-2: #52514e;
+        --ink-3: #898781;
+        --grid: #e1e0d9;
+        --axis: #c3c2b7;
+        --border: rgba(11, 11, 11, 0.1);
+        --hover: rgba(11, 11, 11, 0.04);
+        --new: #2a78d6; /* series slot 1: new code */
+        --old: #898781; /* de-emphasised baseline: old code */
+        --good: #0ca30c;
+        --warning: #fab219;
+        --serious: #ec835a;
+        --critical: #d03b3b;
+        --good-text: #006300;
+        --critical-wash: rgba(208, 59, 59, 0.07);
+        --warning-wash: rgba(250, 178, 25, 0.12);
+        --focus: #2a78d6;
+        --btn-bg: #0b0b0b;
+        --btn-ink: #fcfcfb;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --page: #0d0d0d;
+        --surface: #1a1a19;
+        --surface-2: #222221;
+        --ink-1: #f0efec;
+        --ink-2: #c3c2b7;
+        --ink-3: #898781;
+        --grid: #2c2c2a;
+        --axis: #383835;
+        --border: rgba(255, 255, 255, 0.1);
+        --hover: rgba(255, 255, 255, 0.05);
+        --new: #3987e5;
+        --old: #898781;
+        --good-text: #0ca30c;
+        --critical-wash: rgba(208, 59, 59, 0.14);
+        --warning-wash: rgba(250, 178, 25, 0.1);
+        --focus: #3987e5;
+        --btn-bg: #f0efec;
+        --btn-ink: #0b0b0b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink-1);
+        font:
+          13px/1.45 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      button,
+      input {
+        font: inherit;
+        color: inherit;
+      }
+      :focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+      .mono {
+        font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+        font-size: 12px;
+      }
+      .muted {
+        color: var(--ink-3);
+      }
+      .secondary {
+        color: var(--ink-2);
+      }
+      .num {
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ---------- shell ---------- */
+      .topbar {
+        height: 48px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .crumb {
+        color: var(--ink-3);
+      }
+      .spacer {
+        flex: 1;
+      }
+      .live {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--ink-2);
+      }
+      .live .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--good);
+      }
+      .live.off .dot {
+        background: var(--ink-3);
+      }
+      .actor {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--ink-3);
+      }
+      .actor input {
+        width: 110px;
+        height: 28px;
+        padding: 0 8px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--surface);
+      }
+      .icon-btn {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: none;
+        cursor: pointer;
+        color: var(--ink-2);
+      }
+      .icon-btn:hover {
+        background: var(--hover);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 264px minmax(0, 1fr);
+        min-height: calc(100vh - 48px);
+      }
+      .sidebar {
+        border-right: 1px solid var(--border);
+        background: var(--surface);
+        padding: 12px 8px;
+      }
+      .side-title {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 8px 8px;
+        color: var(--ink-3);
+        font-size: 12px;
+      }
+      .flag-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 8px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        cursor: pointer;
+      }
+      .flag-item:hover {
+        background: var(--hover);
+      }
+      .flag-item[aria-current="true"] {
+        background: var(--surface-2);
+      }
+      .flag-item .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .flag-item .meta {
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--ink-3);
+        font-size: 12px;
+      }
+      .minibar {
+        width: 44px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--grid);
+        overflow: hidden;
+      }
+      .minibar > i {
+        display: block;
+        height: 100%;
+        background: var(--new);
+      }
+
+      main {
+        padding: 24px 32px 64px;
+        max-width: 1120px;
+        width: 100%;
+      }
+
+      /* ---------- status (always icon + label, never colour alone) ---------- */
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--ink-2);
+        white-space: nowrap;
+      }
+      .status svg {
+        flex: none;
+      }
+
+      /* ---------- header ---------- */
+      .flag-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .flag-head h1 {
+        margin: 0 0 4px;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .btn {
+        height: 32px;
+        padding: 0 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        cursor: pointer;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn:hover {
+        background: var(--hover);
+      }
+      .btn.primary {
+        background: var(--btn-bg);
+        color: var(--btn-ink);
+        border-color: transparent;
+      }
+      .btn.primary:hover {
+        opacity: 0.88;
+      }
+      .btn.danger {
+        color: var(--critical);
+      }
+      .btn.danger:hover {
+        background: var(--critical-wash);
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .btn-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      /* ---------- banners ---------- */
+      .banner {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 16px;
+      }
+      .banner.critical {
+        background: var(--critical-wash);
+        border-color: color-mix(in srgb, var(--critical) 35%, transparent);
+      }
+      .banner.pending {
+        background: var(--warning-wash);
+        border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+      }
+      .banner .body {
+        flex: 1;
+      }
+      .banner .title {
+        font-weight: 600;
+      }
+      .banner .detail {
+        color: var(--ink-2);
+        margin-top: 2px;
+      }
+
+      /* ---------- cards ---------- */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .card-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .card-head h2 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      /* ---------- rollout ---------- */
+      .rollout {
+        display: grid;
+        grid-template-columns: 160px minmax(0, 1fr);
+        gap: 24px;
+        align-items: center;
+      }
+      .hero {
+        font-size: 40px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+      .hero-label {
+        color: var(--ink-3);
+        margin-top: 6px;
+      }
+      .stepper {
+        position: relative;
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 1fr;
+        padding-top: 4px;
+      }
+      .stepper .track {
+        position: absolute;
+        left: 6px;
+        right: 6px;
+        top: 9px;
+        height: 2px;
+        background: var(--grid);
+      }
+      .stepper .fill {
+        position: absolute;
+        left: 6px;
+        top: 9px;
+        height: 2px;
+        background: var(--new);
+        transition: width 0.4s ease;
+      }
+      .step {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      .step:first-child {
+        align-items: flex-start;
+      }
+      .step:last-child {
+        align-items: flex-end;
+      }
+      .step .node {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--surface);
+        border: 2px solid var(--axis);
+      }
+      .step.done .node {
+        background: var(--new);
+        border-color: var(--new);
+      }
+      .step.current .node {
+        border-color: var(--new);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--new) 20%, transparent);
+      }
+      .step .label {
+        font-size: 12px;
+        color: var(--ink-3);
+      }
+      .step.done .label,
+      .step.current .label {
+        color: var(--ink-1);
+        font-weight: 500;
+      }
+      .facts {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border);
+        color: var(--ink-2);
+      }
+      .facts b {
+        color: var(--ink-1);
+        font-weight: 500;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      th {
+        font-weight: 500;
+        color: var(--ink-3);
+        font-size: 12px;
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      td.r,
+      th.r {
+        text-align: right;
+      }
+
+      /* ---------- charts ---------- */
+      .charts {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+      .chart {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 12px 8px;
+        position: relative;
+      }
+      .chart-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .chart-title {
+        font-weight: 500;
+      }
+      .delta {
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .delta.bad {
+        color: var(--critical);
+      }
+      .delta.ok {
+        color: var(--ink-2);
+        font-weight: 500;
+      }
+      .chart svg {
+        display: block;
+        width: 100%;
+        height: 168px;
+        margin-top: 8px;
+        overflow: visible;
+      }
+      .legend {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--ink-2);
+      }
+      .legend .key {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .legend .swatch {
+        width: 12px;
+        height: 2px;
+        border-radius: 1px;
+      }
+      .legend b {
+        color: var(--ink-1);
+        font-weight: 600;
+      }
+      .tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 10px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        font-size: 12px;
+        min-width: 150px;
+        z-index: 3;
+      }
+      .tooltip .t {
+        color: var(--ink-3);
+        margin-bottom: 4px;
+      }
+      .tooltip .r {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tooltip .r b {
+        font-weight: 600;
+        min-width: 56px;
+      }
+      .tooltip .k {
+        width: 10px;
+        height: 2px;
+        border-radius: 1px;
+      }
+      .linkish {
+        background: none;
+        border: 0;
+        padding: 0;
+        color: var(--ink-2);
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        font-size: 12px;
+      }
+      .stale {
+        opacity: 0.6;
+        transition: opacity 0.2s;
+      }
+
+      /* ---------- timeline ---------- */
+      .timeline {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .event {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr) auto;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .event:last-child {
+        border-bottom: 0;
+      }
+      .avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        font-weight: 600;
+        background: var(--surface-2);
+        color: var(--ink-2);
+        border: 1px solid var(--border);
+      }
+      .avatar.agent {
+        color: var(--new);
+      }
+      .event.kill .avatar {
+        color: var(--critical);
+        border-color: color-mix(in srgb, var(--critical) 40%, transparent);
+      }
+      .event .line1 b {
+        font-weight: 600;
+      }
+      .event .reason {
+        color: var(--ink-2);
+        margin-top: 2px;
+        overflow-wrap: anywhere;
+      }
+      .event time {
+        color: var(--ink-3);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .seg {
+        display: inline-flex;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .seg button {
+        border: 0;
+        background: none;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--ink-2);
+        font-size: 12px;
+      }
+      .seg button[aria-pressed="true"] {
+        background: var(--surface-2);
+        color: var(--ink-1);
+        font-weight: 500;
+      }
+
+      .empty {
+        padding: 48px 24px;
+        text-align: center;
+        color: var(--ink-2);
+      }
+      .empty code {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        background: var(--surface-2);
+      }
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: var(--btn-bg);
+        color: var(--btn-ink);
+        padding: 10px 14px;
+        border-radius: 8px;
+        max-width: 420px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        z-index: 10;
+      }
+
+      @media (max-width: 900px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+        }
+        .charts,
+        .rollout {
+          grid-template-columns: 1fr;
+        }
+        main {
+          padding: 16px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 1l6 2.2v4.3c0 3.6-2.5 6.3-6 7.5-3.5-1.2-6-3.9-6-7.5V3.2z" fill="var(--new)" />
+        </svg>
+        FlagGuard
+      </div>
+      <span class="crumb" id="crumb"></span>
+      <div class="spacer"></div>
+      <span class="live off" id="live"
+        ><span class="dot"></span><span id="live-text">Connecting…</span></span
+      >
+      <label class="actor"
+        >Acting as <input id="actor" autocomplete="off" spellcheck="false"
+      /></label>
+      <button
+        class="icon-btn"
+        id="theme"
+        type="button"
+        aria-label="Toggle theme"
+        title="Toggle theme"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+          <path
+            d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zm0 1.5v10a5 5 0 0 1 0-10z"
+            fill="currentColor"
+          />
+        </svg>
+      </button>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar" aria-label="Flags">
+        <div class="side-title"><span>Flags</span><span id="flag-count" class="num"></span></div>
+        <nav id="flags"></nav>
+      </aside>
+      <main id="main" aria-live="polite"></main>
+    </div>
+
+    <script type="module">
+      /* ================= helpers ================= */
+      const $ = (id) => document.getElementById(id);
+      /** Tiny DOM builder. Strings become text nodes, so data is never parsed as HTML. */
+      function h(tag, attrs = {}, ...children) {
+        const el = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (v === undefined || v === null || v === false) continue;
+          if (k === "class") el.className = v;
+          else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+          else el.setAttribute(k, v === true ? "" : v);
+        }
+        for (const c of children.flat())
+          if (c !== null && c !== undefined && c !== false)
+            el.append(c instanceof Node ? c : String(c));
+        return el;
+      }
+      const SVG = "http://www.w3.org/2000/svg";
+      function s(tag, attrs = {}) {
+        const el = document.createElementNS(SVG, tag);
+        for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+        return el;
+      }
+      const icon = (paths, color = "currentColor", size = 14) => {
+        const svg = s("svg", {
+          width: size,
+          height: size,
+          viewBox: "0 0 16 16",
+          "aria-hidden": "true",
+        });
+        for (const d of paths) svg.append(s("path", { d, fill: color }));
+        return svg;
+      };
+      const ICONS = {
+        check: ["M6.5 11.3 3.2 8l1.1-1.1 2.2 2.2 5.2-5.2 1.1 1.1z"],
+        circle: [
+          "M8 3a5 5 0 1 0 0 10A5 5 0 0 0 8 3zm0 1.6a3.4 3.4 0 1 1 0 6.8 3.4 3.4 0 0 1 0-6.8z",
+        ],
+        halfCircle: ["M8 3a5 5 0 1 0 0 10A5 5 0 0 0 8 3zm0 1.6v6.8a3.4 3.4 0 0 1 0-6.8z"],
+        stop: ["M5.2 2h5.6L14 5.2v5.6L10.8 14H5.2L2 10.8V5.2z"],
+        clock: ["M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zm.7 2.8v3l2.2 1.4-.7 1.1-3-1.9V4.8z"],
+        warn: ["M8 1.8 15 14H1zm-.8 4.4v4h1.6v-4zm0 5v1.6h1.6v-1.6z"],
+        bolt: ["M9.2 1 3 9h4l-1 6 6.2-8H8.2z"],
+      };
+      function statusOf(record) {
+        if (!record) return { label: "Unknown", icon: ICONS.circle, color: "var(--ink-3)" };
+        // What a human must act on comes first.
+        if (record.pendingApproval)
+          return { label: "Needs approval", icon: ICONS.clock, color: "var(--warning)" };
+        if (record.status === "killed")
+          return { label: "Killed", icon: ICONS.stop, color: "var(--critical)" };
+        if (record.percentage === 100)
+          return { label: "On", icon: ICONS.check, color: "var(--good)" };
+        if (record.percentage === 0)
+          return { label: "Off", icon: ICONS.circle, color: "var(--ink-3)" };
+        return { label: `Rolling out`, icon: ICONS.halfCircle, color: "var(--new)" };
+      }
+      const statusEl = (record) => {
+        const st = statusOf(record);
+        return h("span", { class: "status" }, icon(st.icon, st.color, 12), st.label);
+      };
+      const pct = (r, digits = 1) => `${(r * 100).toFixed(digits)}%`;
+      const ms = (v) => `${Math.round(v)} ms`;
+      const ago = (iso) => {
+        const sec = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+        if (sec < 60) return `${sec}s ago`;
+        if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+        if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+        return new Date(iso).toLocaleDateString();
+      };
+      const duration = (fromIso) => {
+        if (!fromIso) return "—";
+        const sec = Math.max(0, Math.round((Date.now() - Date.parse(fromIso)) / 1000));
+        const m = Math.floor(sec / 60);
+        return m > 0 ? `${m}m ${sec % 60}s` : `${sec}s`;
+      };
+      function toast(text) {
+        const el = h("div", { class: "toast", role: "status" }, text);
+        document.body.append(el);
+        setTimeout(() => el.remove(), 4000);
+      }
+
+      /* ================= state ================= */
+      const ui = {
+        state: null,
+        detail: null,
+        selected: decodeURIComponent(location.hash.slice(1)) || null,
+        env: null,
+        filter: "all",
+        table: false,
+      };
+      const actorInput = $("actor");
+      actorInput.value = localStorage.getItem("fg-actor") || "you";
+      actorInput.addEventListener("change", () =>
+        localStorage.setItem("fg-actor", actorInput.value.trim() || "you"),
+      );
+
+      const theme =
+        localStorage.getItem("fg-theme") ||
+        (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+      $("theme").addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        localStorage.setItem("fg-theme", next);
+        render();
+      });
+      window.addEventListener("hashchange", () => {
+        ui.selected = decodeURIComponent(location.hash.slice(1)) || null;
+        loadDetail().then(render);
+      });
+      window.addEventListener("resize", () => render());
+
+      async function api(path, init) {
+        const res = await fetch(path, init);
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        return body;
+      }
+      async function loadState() {
+        ui.state = await api("/api/state");
+        const flags = ui.state.flags.map((f) => f.flag);
+        if (!ui.selected || !flags.includes(ui.selected)) ui.selected = flags[0] || null;
+        if (!ui.env)
+          ui.env = (
+            ui.state.policy.environments.find((e) => e.production) ||
+            ui.state.policy.environments[0]
+          )?.name;
+      }
+      async function loadDetail() {
+        ui.detail = ui.selected ? await api(`/api/flags/${encodeURIComponent(ui.selected)}`) : null;
+      }
+      async function act(action, extra = {}) {
+        // One action at a time: a double click must not approve twice.
+        if (ui.busy) return;
+        ui.busy = true;
+        document.querySelectorAll("main .btn").forEach((b) => (b.disabled = true));
+        try {
+          const result = await api(`/api/flags/${encodeURIComponent(ui.selected)}/actions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-FlagGuard-Request": "1" },
+            body: JSON.stringify({
+              action,
+              environment: ui.env,
+              actor: actorInput.value.trim() || "you",
+              ...extra,
+            }),
+          });
+          toast(`${result.outcome.replace("_", " ")} · ${result.message}`);
+        } catch (error) {
+          toast(`Failed: ${error.message}`);
+        } finally {
+          ui.busy = false;
+        }
+        lastSignature = ""; // force a fresh render so buttons reflect the new state
+        await refresh();
+      }
+
+      /* ================= sidebar ================= */
+      function renderSidebar() {
+        const nav = $("flags");
+        const flags = ui.state?.flags ?? [];
+        $("flag-count").textContent = String(flags.length);
+        const prodName = ui.env;
+        nav.replaceChildren(
+          ...flags.map((f) => {
+            const rec = f.records.find((r) => r.environment === prodName);
+            return h(
+              "button",
+              {
+                class: "flag-item",
+                type: "button",
+                "aria-current": f.flag === ui.selected ? "true" : "false",
+                onclick: () => (location.hash = encodeURIComponent(f.flag)),
+              },
+              h(
+                "div",
+                { class: "row" },
+                h("span", { class: "mono" }, f.flag),
+                f.pending ? icon(ICONS.clock, "var(--warning)", 12) : null,
+              ),
+              h(
+                "div",
+                { class: "meta" },
+                h(
+                  "span",
+                  { class: "minibar", "aria-hidden": "true" },
+                  h("i", { style: `width:${rec?.percentage ?? 0}%` }),
+                ),
+                h("span", { class: "num" }, `${rec?.percentage ?? 0}%`),
+                statusEl(rec),
+              ),
+            );
+          }),
+        );
+      }
+
+      /* ================= chart ================= */
+      /**
+       * Line chart: thin 2px lines, hairline grid, one y-axis, crosshair tooltip
+       * listing every series at the hovered time. Optional solid threshold line.
+       */
+      function lineChart({ points, accessor, format, threshold, title }) {
+        const wrap = h("div");
+        const svg = s("svg", { role: "img", "aria-label": title });
+        wrap.append(svg);
+        const width = Math.max(260, wrap.clientWidth || 460);
+        requestAnimationFrame(() => draw(svg.clientWidth || width));
+
+        function draw(W) {
+          const H = 168;
+          const pad = { l: 44, r: 12, t: 8, b: 22 };
+          svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+          svg.replaceChildren();
+          const iw = W - pad.l - pad.r;
+          const ih = H - pad.t - pad.b;
+          if (points.length < 2) {
+            const t = s("text", {
+              x: W / 2,
+              y: H / 2,
+              "text-anchor": "middle",
+              fill: "var(--ink-3)",
+              "font-size": 12,
+            });
+            t.textContent = "Collecting data…";
+            svg.append(t);
+            return;
+          }
+          const t0 = points[0].t;
+          const t1 = points.at(-1).t;
+          const vals = points.flatMap((p) => [accessor(p.treatment), accessor(p.control)]);
+          let max = Math.max(...vals, threshold?.value ?? 0);
+          max = max <= 0 ? 1 : niceMax(max * 1.1);
+          const x = (t) => pad.l + ((t - t0) / Math.max(1, t1 - t0)) * iw;
+          const y = (v) => pad.t + ih - (v / max) * ih;
+
+          // grid + y ticks (solid hairlines)
+          for (let i = 0; i <= 3; i++) {
+            const v = (max / 3) * i;
+            const gy = y(v);
+            svg.append(
+              s("line", {
+                x1: pad.l,
+                x2: W - pad.r,
+                y1: gy,
+                y2: gy,
+                stroke: i === 0 ? "var(--axis)" : "var(--grid)",
+                "stroke-width": 1,
+              }),
+            );
+            const lab = s("text", {
+              x: pad.l - 8,
+              y: gy + 4,
+              "text-anchor": "end",
+              fill: "var(--ink-3)",
+              "font-size": 11,
+              class: "num",
+            });
+            lab.textContent = format(v, true);
+            svg.append(lab);
+          }
+          // x ticks
+          for (const frac of [0, 0.5, 1]) {
+            const t = t0 + (t1 - t0) * frac;
+            const lab = s("text", {
+              x: x(t),
+              y: H - 4,
+              "text-anchor": frac === 0 ? "start" : frac === 1 ? "end" : "middle",
+              fill: "var(--ink-3)",
+              "font-size": 11,
+              class: "num",
+            });
+            lab.textContent = new Date(t).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            });
+            svg.append(lab);
+          }
+          // threshold
+          if (threshold && threshold.value <= max) {
+            const ty = y(threshold.value);
+            svg.append(
+              s("line", {
+                x1: pad.l,
+                x2: W - pad.r,
+                y1: ty,
+                y2: ty,
+                stroke: "var(--critical)",
+                "stroke-width": 1,
+                opacity: 0.7,
+              }),
+            );
+            const tl = s("text", {
+              x: W - pad.r,
+              y: ty - 4,
+              "text-anchor": "end",
+              fill: "var(--critical)",
+              "font-size": 11,
+            });
+            tl.textContent = threshold.label;
+            svg.append(tl);
+          }
+          // series: old (baseline, recessive) first, new on top
+          const series = [
+            { key: "control", label: "Old code", color: "var(--old)", width: 1.5 },
+            { key: "treatment", label: "New code", color: "var(--new)", width: 2 },
+          ];
+          for (const ser of series) {
+            // No requests in a cohort means no measurement, not "0": break the line there.
+            let d = "";
+            let pen = "M";
+            for (const p of points) {
+              if (p[ser.key].requests === 0) {
+                pen = "M";
+                continue;
+              }
+              d += `${pen}${x(p.t).toFixed(1)},${y(accessor(p[ser.key])).toFixed(1)}`;
+              pen = "L";
+            }
+            if (d === "") continue;
+            svg.append(
+              s("path", {
+                d,
+                fill: "none",
+                stroke: ser.color,
+                "stroke-width": ser.width,
+                "stroke-linejoin": "round",
+                "stroke-linecap": "round",
+              }),
+            );
+            const last = points.at(-1);
+            if (last[ser.key].requests === 0) continue;
+            svg.append(
+              s("circle", {
+                cx: x(last.t),
+                cy: y(accessor(last[ser.key])),
+                r: 4,
+                fill: ser.color,
+                stroke: "var(--surface)",
+                "stroke-width": 2,
+              }),
+            );
+          }
+
+          // crosshair + tooltip
+          const cross = s("line", {
+            y1: pad.t,
+            y2: pad.t + ih,
+            stroke: "var(--axis)",
+            "stroke-width": 1,
+            visibility: "hidden",
+          });
+          svg.append(cross);
+          const hit = s("rect", {
+            x: pad.l,
+            y: pad.t,
+            width: iw,
+            height: ih,
+            fill: "transparent",
+            tabindex: 0,
+          });
+          svg.append(hit);
+          let tip = null;
+          const show = (clientX) => {
+            const rect = svg.getBoundingClientRect();
+            const px = ((clientX - rect.left) / rect.width) * W;
+            const t = t0 + ((px - pad.l) / iw) * (t1 - t0);
+            let best = points[0];
+            for (const p of points) if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+            const cx = x(best.t);
+            cross.setAttribute("x1", cx);
+            cross.setAttribute("x2", cx);
+            cross.setAttribute("visibility", "visible");
+            tip?.remove();
+            tip = h(
+              "div",
+              { class: "tooltip" },
+              h("div", { class: "t num" }, new Date(best.t).toLocaleTimeString()),
+              ...series
+                .slice()
+                .reverse()
+                .map((ser) =>
+                  h(
+                    "div",
+                    { class: "r" },
+                    h("span", { class: "k", style: `background:${ser.color}` }),
+                    h(
+                      "b",
+                      { class: "num" },
+                      best[ser.key].requests > 0 ? format(accessor(best[ser.key])) : "no traffic",
+                    ),
+                    h("span", { class: "muted" }, ser.label),
+                  ),
+                ),
+            );
+            wrap.parentElement.append(tip);
+            const left = (cx / W) * rect.width + 12;
+            tip.style.left = `${Math.min(left, rect.width - 170)}px`;
+            tip.style.top = `56px`;
+          };
+          hit.addEventListener("pointermove", (e) => {
+            ui.hovering = true;
+            show(e.clientX);
+          });
+          hit.addEventListener("pointerleave", () => {
+            ui.hovering = false;
+            cross.setAttribute("visibility", "hidden");
+            tip?.remove();
+          });
+          hit.addEventListener("focus", () => {
+            const rect = svg.getBoundingClientRect();
+            show(rect.right - 1);
+          });
+          hit.addEventListener("blur", () => {
+            cross.setAttribute("visibility", "hidden");
+            tip?.remove();
+          });
+        }
+        return wrap;
+      }
+      function niceMax(v) {
+        const p = 10 ** Math.floor(Math.log10(v));
+        for (const m of [1, 2, 2.5, 5, 10]) if (v <= m * p) return m * p;
+        return 10 * p;
+      }
+
+      /* ================= main ================= */
+      const VERBS = {
+        create_flag: "created the flag",
+        suggest_code_patch: "suggested a code change",
+        enable_in_non_production: "enabled it outside production",
+        start_rollout: "started the rollout",
+        advance_rollout: "advanced the rollout",
+        complete_rollout: "completed the rollout",
+        kill_flag: "pulled the kill switch",
+        open_cleanup_pr: "opened a cleanup PR",
+        archive_flag: "archived the flag",
+        approve: "approved",
+        reject: "rejected",
+        health_check: "checked health",
+      };
+      function describe(e) {
+        const verb = VERBS[e.action] || e.action;
+        if (e.outcome === "pending_approval")
+          return `asked for approval to ${verb.replace(/^(started|advanced|completed|pulled)/, (m) => ({ started: "start", advanced: "advance", completed: "complete", pulled: "pull" })[m])}`;
+        if (e.outcome === "blocked")
+          return `was blocked from ${verb.replace(/ed /, "ing ").replace(/ed$/, "ing")}`;
+        if (e.outcome === "denied") return `was denied: ${verb}`;
+        if (e.outcome === "failed") return `failed to ${verb}`;
+        return verb;
+      }
+
+      /** Re-render, then put keyboard focus back on the equivalent control. */
+      function render() {
+        const active = document.activeElement;
+        const focusKey =
+          active && active.tagName === "BUTTON"
+            ? `${active.closest("nav") ? "nav" : "main"}:${active.textContent}`
+            : null;
+        paint();
+        if (focusKey) {
+          const [scope, text] = [
+            focusKey.slice(0, focusKey.indexOf(":")),
+            focusKey.slice(focusKey.indexOf(":") + 1),
+          ];
+          const root = scope === "nav" ? $("flags") : $("main");
+          [...root.querySelectorAll("button")].find((b) => b.textContent === text)?.focus();
+        }
+      }
+
+      function paint() {
+        renderSidebar();
+        const main = $("main");
+        const st = ui.state;
+        if (!st) return;
+        $("crumb").textContent = `/ ${st.backend === "flagsmith" ? "Flagsmith" : st.backend}`;
+        const live = $("live");
+        live.classList.toggle("off", !st.watching);
+        $("live-text").textContent = st.watching
+          ? `Watching · every ${st.intervalSeconds}s`
+          : st.metrics
+            ? "Metrics only"
+            : "No metrics";
+
+        if (!ui.selected || !ui.detail) {
+          main.replaceChildren(
+            h(
+              "div",
+              { class: "empty" },
+              h("div", {}, "No flags yet. Create one and FlagGuard will track it here:"),
+              h("code", { class: "mono" }, "flagguard flag create fg_my_feature"),
+            ),
+          );
+          return;
+        }
+
+        const d = ui.detail;
+        const records = d.records;
+        const rec = records.find((r) => r.environment === ui.env);
+        const envDef = st.policy.environments.find((e) => e.name === ui.env);
+        const stages = st.policy.stages;
+        const g = st.policy.guardrails;
+        const children = [];
+
+        /* header */
+        const envSeg = h(
+          "div",
+          { class: "seg", role: "group", "aria-label": "Environment" },
+          ...st.policy.environments.map((e) =>
+            h(
+              "button",
+              {
+                type: "button",
+                "aria-pressed": String(e.name === ui.env),
+                onclick: () => ((ui.env = e.name), render()),
+              },
+              e.name,
+            ),
+          ),
+        );
+        const isProd = Boolean(envDef?.production);
+        const canAdvance = rec && rec.status !== "completed" && !rec.pendingApproval;
+        children.push(
+          h(
+            "div",
+            { class: "flag-head" },
+            h(
+              "div",
+              {},
+              h("h1", { class: "mono", style: "font-size:18px" }, d.flag),
+              h("div", { class: "btn-row", style: "align-items:center" }, envSeg, statusEl(rec)),
+            ),
+            h(
+              "div",
+              { class: "btn-row" },
+              isProd
+                ? h(
+                    "button",
+                    {
+                      class: "btn",
+                      type: "button",
+                      disabled: !canAdvance,
+                      onclick: () => act("propose"),
+                      title: "The agent proposes the next stage; a human approves it",
+                    },
+                    "Propose next stage",
+                  )
+                : null,
+              h(
+                "button",
+                {
+                  class: "btn danger",
+                  type: "button",
+                  disabled: !rec || rec.percentage === 0,
+                  onclick: () => {
+                    if (confirm(`Turn ${d.flag} OFF for everyone in ${ui.env}?`))
+                      act("kill", { reason: "Kill switch from dashboard" });
+                  },
+                },
+                icon(ICONS.stop, "currentColor", 12),
+                "Kill switch",
+              ),
+            ),
+          ),
+        );
+
+        /* banners */
+        const kill = d.events.find(
+          (e) => e.action === "kill_flag" && e.outcome === "applied" && e.environment === ui.env,
+        );
+        if (rec?.status === "killed" && kill) {
+          const auto = kill.actor === "agent";
+          children.push(
+            h(
+              "div",
+              { class: "banner critical", role: "alert" },
+              icon(ICONS.stop, "var(--critical)", 16),
+              h(
+                "div",
+                { class: "body" },
+                h(
+                  "div",
+                  { class: "title" },
+                  auto
+                    ? `Rolled back automatically after detecting a regression`
+                    : `Turned off by ${kill.actor.replace("human:", "")}`,
+                ),
+                h("div", { class: "detail" }, kill.reason),
+                h(
+                  "div",
+                  { class: "detail muted" },
+                  `${new Date(kill.timestamp).toLocaleString()} · ${ago(kill.timestamp)} · now serving everyone the old code`,
+                ),
+              ),
+            ),
+          );
+        }
+        if (rec?.pendingApproval) {
+          const pa = rec.pendingApproval;
+          children.push(
+            h(
+              "div",
+              { class: "banner pending" },
+              icon(ICONS.clock, "var(--warning)", 16),
+              h(
+                "div",
+                { class: "body" },
+                h("div", { class: "title" }, `The agent is asking: ${pa.reason}`),
+                h(
+                  "div",
+                  { class: "detail" },
+                  `Requested ${ago(pa.requestedAt)} · approving re-checks health first, so a regression since the request blocks it.`,
+                ),
+              ),
+              h(
+                "div",
+                { class: "btn-row" },
+                h(
+                  "button",
+                  { class: "btn", type: "button", onclick: () => act("reject") },
+                  "Reject",
+                ),
+                h(
+                  "button",
+                  { class: "btn primary", type: "button", onclick: () => act("approve") },
+                  `Approve ${pa.targetPercentage}%`,
+                ),
+              ),
+            ),
+          );
+        }
+
+        /* rollout */
+        const current = rec?.percentage ?? 0;
+        const reached = stages.filter((sg) => sg <= current).length;
+        const fillWidth = reached === 0 ? 0 : ((reached - 1) / (stages.length - 1)) * 100;
+        const next = stages.find((sg) => sg > current);
+        children.push(
+          h(
+            "section",
+            { class: "card", "aria-labelledby": "rollout-h" },
+            h(
+              "div",
+              { class: "card-head" },
+              h("h2", { id: "rollout-h" }, `Rollout · ${ui.env}`),
+              h(
+                "span",
+                { class: "muted" },
+                `${stages.length} stages · ≥ ${st.policy.minStageMinutes} min each`,
+              ),
+            ),
+            h(
+              "div",
+              { class: "rollout" },
+              h(
+                "div",
+                {},
+                h("div", { class: "hero" }, `${current}%`),
+                h(
+                  "div",
+                  { class: "hero-label" },
+                  isProd
+                    ? "of identified users get the new code"
+                    : current === 100
+                      ? "on for the whole team"
+                      : "of users",
+                ),
+              ),
+              h(
+                "div",
+                { class: "stepper", role: "list", "aria-label": "Rollout stages" },
+                h("div", { class: "track" }),
+                h("div", {
+                  class: "fill",
+                  style: `width:calc((100% - 12px) * ${fillWidth / 100})`,
+                }),
+                ...stages.map((sg) =>
+                  h(
+                    "div",
+                    {
+                      class: `step ${sg < current ? "done" : sg === current ? "current done" : ""}`,
+                      role: "listitem",
+                    },
+                    h("span", { class: "node" }),
+                    h("span", { class: "label num" }, `${sg}%`),
+                  ),
+                ),
+              ),
+            ),
+            h(
+              "div",
+              { class: "facts" },
+              h(
+                "span",
+                {},
+                "In this stage ",
+                h("b", { class: "num" }, current > 0 ? duration(rec?.stageStartedAt) : "—"),
+              ),
+              h("span", {}, "Next ", h("b", {}, next !== undefined ? `${next}%` : "—")),
+              h(
+                "span",
+                {},
+                "Kill if ",
+                h(
+                  "b",
+                  {},
+                  `errors > ${pct(g.maxErrorRate, 0)} or ${g.maxErrorRateRatio}× old, p95 > ${g.maxLatencyRatio}× old`,
+                ),
+              ),
+            ),
+            h(
+              "table",
+              { style: "margin-top:12px" },
+              h(
+                "thead",
+                {},
+                h(
+                  "tr",
+                  {},
+                  h("th", {}, "Environment"),
+                  h("th", {}, "State"),
+                  h("th", { class: "r" }, "Exposure"),
+                ),
+              ),
+              h(
+                "tbody",
+                {},
+                ...records.map((r) =>
+                  h(
+                    "tr",
+                    {},
+                    h(
+                      "td",
+                      {},
+                      r.environment,
+                      st.policy.environments.find((e) => e.name === r.environment)?.production
+                        ? h("span", { class: "muted" }, " · production")
+                        : null,
+                    ),
+                    h("td", {}, statusEl(r)),
+                    h("td", { class: "r num" }, `${r.percentage}%`),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        /* health */
+        const pts = d.series;
+        const last = pts.at(-1);
+        const verdict = d.verdict;
+        const verdictEl = !verdict
+          ? h(
+              "span",
+              { class: "status" },
+              icon(ICONS.circle, "var(--ink-3)", 12),
+              st.metrics ? "Waiting for metrics" : "No metrics source",
+            )
+          : verdict.status === "healthy"
+            ? h("span", { class: "status" }, icon(ICONS.check, "var(--good)", 12), "Healthy")
+            : verdict.status === "unhealthy"
+              ? h(
+                  "span",
+                  { class: "status", style: "color:var(--critical);font-weight:600" },
+                  icon(ICONS.warn, "var(--critical)", 12),
+                  "Regression detected",
+                )
+              : verdict.status === "platform_degraded"
+                ? h(
+                    "span",
+                    { class: "status" },
+                    icon(ICONS.warn, "var(--serious)", 12),
+                    "Platform degraded (not this flag)",
+                  )
+                : h(
+                    "span",
+                    { class: "status" },
+                    icon(ICONS.clock, "var(--ink-3)", 12),
+                    "Collecting data",
+                  );
+        const errDelta = last ? last.treatment.errorRate - last.control.errorRate : 0;
+        const latDelta = last ? last.treatment.p95LatencyMs - last.control.p95LatencyMs : 0;
+        // A delta needs traffic on both sides; comparing against an empty cohort is noise.
+        const comparable = Boolean(
+          last && last.treatment.requests > 0 && last.control.requests > 0,
+        );
+        const deltaEl = (value, text, bad) =>
+          comparable
+            ? h(
+                "span",
+                {
+                  class: `delta ${bad ? "bad" : "ok"}`,
+                  title: "New code minus old code, latest sample",
+                },
+                value >= 0 ? `+${text}` : text,
+              )
+            : h(
+                "span",
+                { class: "delta ok muted", title: "Needs traffic on both new and old code" },
+                "—",
+              );
+        const legend = (accessor, format) =>
+          h(
+            "div",
+            { class: "legend" },
+            h(
+              "span",
+              { class: "key" },
+              h("span", { class: "swatch", style: "background:var(--new)" }),
+              "New code ",
+              last
+                ? h(
+                    "b",
+                    { class: "num" },
+                    last.treatment.requests > 0 ? format(accessor(last.treatment)) : "no traffic",
+                  )
+                : null,
+              last ? h("span", { class: "muted num" }, ` · ${last.treatment.requests} req`) : null,
+            ),
+            h(
+              "span",
+              { class: "key" },
+              h("span", { class: "swatch", style: "background:var(--old)" }),
+              "Old code ",
+              last ? h("b", { class: "num" }, format(accessor(last.control))) : null,
+              last ? h("span", { class: "muted num" }, ` · ${last.control.requests} req`) : null,
+            ),
+          );
+        const chartCard = (title, accessor, format, delta, threshold) =>
+          h(
+            "div",
+            { class: "chart" },
+            h("div", { class: "chart-head" }, h("span", { class: "chart-title" }, title), delta),
+            lineChart({ points: pts, accessor, format, threshold, title }),
+            legend(accessor, format),
+          );
+        const errBad =
+          last &&
+          (last.treatment.errorRate > g.maxErrorRate ||
+            (last.control.requests >= g.minSamples &&
+              last.treatment.errorRate > last.control.errorRate * g.maxErrorRateRatio &&
+              errDelta >= 0.01));
+        const latBad =
+          last &&
+          last.control.requests >= g.minSamples &&
+          last.treatment.p95LatencyMs > last.control.p95LatencyMs * g.maxLatencyRatio &&
+          latDelta >= 50;
+
+        const healthBody = !st.metrics
+          ? h(
+              "div",
+              { class: "empty" },
+              "Start the dashboard with a metrics source to compare new and old code:",
+              h("br"),
+              h(
+                "code",
+                { class: "mono" },
+                "flagguard dashboard --metrics http://localhost:3000 --watch",
+              ),
+            )
+          : ui.table
+            ? healthTable(pts)
+            : h(
+                "div",
+                { class: "charts" },
+                chartCard(
+                  "Error rate",
+                  (c) => c.errorRate,
+                  (v, axis) => (axis ? `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%` : pct(v)),
+                  last
+                    ? deltaEl(
+                        errDelta,
+                        `${(Math.abs(errDelta) * 100).toFixed(1)} pp`.replace(
+                          /^/,
+                          errDelta < 0 ? "−" : "",
+                        ),
+                        errBad,
+                      )
+                    : null,
+                  { value: g.maxErrorRate, label: `kill above ${pct(g.maxErrorRate, 0)}` },
+                ),
+                chartCard(
+                  "p95 latency",
+                  (c) => c.p95LatencyMs,
+                  (v) => `${Math.round(v)}${v >= 1000 ? "" : " ms"}`,
+                  last
+                    ? deltaEl(
+                        latDelta,
+                        `${Math.abs(Math.round(latDelta))} ms`.replace(
+                          /^/,
+                          latDelta < 0 ? "−" : "",
+                        ),
+                        latBad,
+                      )
+                    : null,
+                  null,
+                ),
+              );
+        children.push(
+          h(
+            "section",
+            { class: "card", "aria-labelledby": "health-h" },
+            h(
+              "div",
+              { class: "card-head" },
+              h(
+                "div",
+                { class: "btn-row", style: "align-items:baseline" },
+                h("h2", { id: "health-h" }, "Health"),
+                h("span", { class: "muted" }, "users on the new code vs the old code, same window"),
+              ),
+              h(
+                "div",
+                { class: "btn-row", style: "align-items:center" },
+                verdictEl,
+                st.metrics
+                  ? h(
+                      "button",
+                      {
+                        class: "linkish",
+                        type: "button",
+                        onclick: () => ((ui.table = !ui.table), render()),
+                      },
+                      ui.table ? "Show charts" : "Show table",
+                    )
+                  : null,
+              ),
+            ),
+            healthBody,
+          ),
+        );
+
+        /* activity */
+        const events = d.events.filter((e) =>
+          ui.filter === "all"
+            ? true
+            : ui.filter === "agent"
+              ? e.actor === "agent"
+              : e.actor !== "agent",
+        );
+        children.push(
+          h(
+            "section",
+            { class: "card", "aria-labelledby": "activity-h" },
+            h(
+              "div",
+              { class: "card-head" },
+              h(
+                "div",
+                { class: "btn-row", style: "align-items:baseline" },
+                h("h2", { id: "activity-h" }, "Activity"),
+                h("span", { class: "muted" }, "every decision, who made it, and why"),
+              ),
+              h(
+                "div",
+                { class: "seg", role: "group", "aria-label": "Filter activity" },
+                ...[
+                  ["all", "All"],
+                  ["agent", "Agent"],
+                  ["human", "People"],
+                ].map(([k, label]) =>
+                  h(
+                    "button",
+                    {
+                      type: "button",
+                      "aria-pressed": String(ui.filter === k),
+                      onclick: () => ((ui.filter = k), render()),
+                    },
+                    label,
+                  ),
+                ),
+              ),
+            ),
+            events.length === 0
+              ? h("div", { class: "muted", style: "padding:12px 0" }, "Nothing yet.")
+              : h(
+                  "ol",
+                  { class: "timeline" },
+                  ...events.slice(0, 60).map((e) => {
+                    const agent = e.actor === "agent";
+                    const name = agent ? "FlagGuard agent" : e.actor.replace("human:", "");
+                    const outcomeIcon = {
+                      applied: null,
+                      pending_approval: icon(ICONS.clock, "var(--warning)", 12),
+                      blocked: icon(ICONS.warn, "var(--serious)", 12),
+                      denied: icon(ICONS.warn, "var(--serious)", 12),
+                      failed: icon(ICONS.warn, "var(--critical)", 12),
+                      observed: null,
+                    }[e.outcome];
+                    return h(
+                      "li",
+                      {
+                        class: `event ${e.action === "kill_flag" && e.outcome === "applied" ? "kill" : ""}`,
+                      },
+                      h(
+                        "span",
+                        { class: `avatar ${agent ? "agent" : ""}`, "aria-hidden": "true" },
+                        agent
+                          ? icon(ICONS.bolt, "currentColor", 13)
+                          : name.slice(0, 2).toUpperCase(),
+                      ),
+                      h(
+                        "div",
+                        {},
+                        h(
+                          "div",
+                          { class: "line1" },
+                          h("b", {}, name),
+                          " ",
+                          describe(e),
+                          " ",
+                          outcomeIcon,
+                          e.environment
+                            ? h("span", { class: "muted" }, ` · ${e.environment}`)
+                            : null,
+                        ),
+                        h("div", { class: "reason" }, e.reason),
+                      ),
+                      h(
+                        "time",
+                        { datetime: e.timestamp, title: new Date(e.timestamp).toLocaleString() },
+                        ago(e.timestamp),
+                      ),
+                    );
+                  }),
+                ),
+          ),
+        );
+
+        main.replaceChildren(...children);
+      }
+
+      function healthTable(pts) {
+        const rows = pts.slice(-20).reverse();
+        return h(
+          "table",
+          {},
+          h(
+            "thead",
+            {},
+            h(
+              "tr",
+              {},
+              h("th", {}, "Time"),
+              h("th", { class: "r" }, "New errors"),
+              h("th", { class: "r" }, "Old errors"),
+              h("th", { class: "r" }, "New p95"),
+              h("th", { class: "r" }, "Old p95"),
+              h("th", { class: "r" }, "Requests (new / old)"),
+            ),
+          ),
+          h(
+            "tbody",
+            {},
+            ...rows.map((p) =>
+              h(
+                "tr",
+                {},
+                h("td", { class: "num" }, new Date(p.t).toLocaleTimeString()),
+                h("td", { class: "r num" }, pct(p.treatment.errorRate)),
+                h("td", { class: "r num" }, pct(p.control.errorRate)),
+                h("td", { class: "r num" }, ms(p.treatment.p95LatencyMs)),
+                h("td", { class: "r num" }, ms(p.control.p95LatencyMs)),
+                h("td", { class: "r num" }, `${p.treatment.requests} / ${p.control.requests}`),
+              ),
+            ),
+          ),
+        );
+      }
+
+      /* ================= loop ================= */
+      let failing = false;
+      let lastSignature = "";
+      async function refresh() {
+        try {
+          await loadState();
+          await loadDetail();
+          if (failing) document.body.classList.remove("stale");
+          failing = false;
+          // Only rebuild when something changed, and never under the reader's pointer:
+          // keeps the crosshair steady and keyboard focus where it was.
+          const { refreshedAt, ...stable } = ui.state;
+          const signature = JSON.stringify([stable, ui.detail]);
+          if (signature !== lastSignature && !ui.hovering) {
+            lastSignature = signature;
+            render();
+          }
+        } catch {
+          // keep the previous frame, dimmed, instead of flashing an error
+          failing = true;
+          document.body.classList.add("stale");
+          $("live").classList.add("off");
+          $("live-text").textContent = "Reconnecting…";
+        }
+      }
+      await refresh();
+      setInterval(refresh, 3000);
+    </script>
+  </body>
+</html>

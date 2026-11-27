@@ -16,7 +16,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "assets"
   ],
   "engines": {
     "node": ">=22"
@@ -24,6 +25,7 @@
   "dependencies": {
     "@flagguard/core": "0.1.0",
     "commander": "^15.1.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "zod": "^4.6.7"
   }
 }
