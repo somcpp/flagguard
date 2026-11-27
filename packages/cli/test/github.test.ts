@@ -75,3 +75,20 @@ describe("GitHubClient", () => {
     await expect(github.getPull(1)).rejects.toThrow(/GET \/repos\/o\/r\/pulls\/1 failed with 404/);
   });
 });
+
+describe("typo tolerance", () => {
+  it("accepts near-miss prefixes and records the misspelling", () => {
+    expect(parseSlashCommand("/flaggaurd status")).toEqual({
+      command: "status",
+      args: "",
+      misspelledAs: "/flaggaurd",
+    });
+    expect(parseSlashCommand("/flagard approve")?.command).toBe("approve");
+  });
+
+  it("ignores unrelated slash commands", () => {
+    expect(parseSlashCommand("/flags list")).toBeNull();
+    expect(parseSlashCommand("/flagsmith status")).toBeNull();
+    expect(parseSlashCommand("/deploy now")).toBeNull();
+  });
+});

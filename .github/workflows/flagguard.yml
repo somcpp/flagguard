@@ -21,7 +21,7 @@ jobs:
     # PR events, or /flagguard comments on PRs
     if: >-
       github.event_name == 'pull_request' ||
-      (github.event.issue.pull_request && startsWith(github.event.comment.body, '/flagguard'))
+      (github.event.issue.pull_request && startsWith(github.event.comment.body, '/flag'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -169,7 +169,7 @@ permissions:
   issues: write
 jobs:
   guard:
-    if: github.event_name == 'pull_request' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/flagguard'))
+    if: github.event_name == 'pull_request' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/flag'))
     runs-on: ubuntu-latest
     steps:
       - uses: somcpp/flagguard@main
