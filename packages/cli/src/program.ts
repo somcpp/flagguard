@@ -160,6 +160,34 @@ export function createProgram(
       );
       ok(`backend: ${ctx.backend.kind}`);
 
+      // The app's server-side key decides which environment users are served from.
+      // A key from the wrong environment silently serves the wrong rollout.
+      const serverKey = process.env.FLAGSMITH_SERVER_KEY;
+      if (serverKey) {
+        try {
+          const sdkUrl = (
+            process.env.FLAGSMITH_SDK_API_URL ?? "https://edge.api.flagsmith.com/api/v1"
+          ).replace(/\/+$/, "");
+          const response = await fetch(`${sdkUrl}/environment-document/`, {
+            headers: { "X-Environment-Key": serverKey },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!response.ok) throw new Error(`Flagsmith returned ${response.status}`);
+          const { name } = (await response.json()) as { name?: string };
+          const env = ctx.loaded.policy.environments.find(
+            (e) => e.name.toLowerCase() === (name ?? "").toLowerCase(),
+          );
+          if (env?.production) ok(`FLAGSMITH_SERVER_KEY serves the app from ${env.name}`);
+          else {
+            bad(
+              `FLAGSMITH_SERVER_KEY belongs to "${name ?? "unknown"}", not a production environment: the app would ignore production rollouts. Create the key in Production → Settings → SDK Keys.`,
+            );
+          }
+        } catch (error) {
+          bad(`FLAGSMITH_SERVER_KEY: ${(error as Error).message}`);
+        }
+      }
+
       if (ctx.backend.kind === "flagsmith") {
         try {
           const settings = loadEnv();
