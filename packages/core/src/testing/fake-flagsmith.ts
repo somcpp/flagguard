@@ -57,7 +57,11 @@ export class FakeFlagsmith {
     if (!state) {
       const feature = this.features.find((f) => f.id === featureId);
       state = {
-        environment_default: { enabled: feature?.default_enabled ?? false, value: null },
+        environment_default: {
+          enabled: feature?.default_enabled ?? false,
+          value: null,
+          variants: [],
+        },
         segment_overrides: [],
       };
       this.states.set(key, state);
@@ -136,6 +140,8 @@ export class FakeFlagsmith {
       }
       if (method === "POST") {
         const req = body as CreateSegmentRequest;
+        const invalid = validateSegment(req);
+        if (invalid) return invalid;
         const id = this.id();
         const segment: Segment = {
           id,
@@ -158,6 +164,8 @@ export class FakeFlagsmith {
       const segment = this.segments.find((s) => s.id === Number(m?.[1]));
       if (!segment) return json(404, { detail: "Not found." });
       const req = body as CreateSegmentRequest;
+      const invalid = validateSegment(req);
+      if (invalid) return invalid;
       Object.assign(segment, {
         name: req.name,
         description: req.description ?? null,
@@ -178,6 +186,11 @@ export class FakeFlagsmith {
       if (method === "GET") return json(200, state);
       if (method === "PATCH") {
         const req = body as UpdateFlagStateRequest;
+        const isMultivariate =
+          this.features.find((f) => f.id === featureId)?.type === "MULTIVARIATE";
+        if (!isMultivariate && req.segment_overrides?.some((o) => o.variants !== undefined)) {
+          return json(400, { segment_overrides: [{ variants: ["Feature is not multivariate."] }] });
+        }
         if (req.environment_default) {
           state.environment_default = { ...state.environment_default, ...req.environment_default };
         }
@@ -187,6 +200,7 @@ export class FakeFlagsmith {
             priority: o.priority ?? index,
             enabled: o.enabled ?? false,
             value: o.value ?? null,
+            variants: o.variants ?? [],
           }));
         }
         return json(200, state);
@@ -210,4 +224,26 @@ function json(status: number, data: unknown): Response {
 
 function page(results: unknown[]): Response {
   return json(200, { count: results.length, next: null, previous: null, results });
+}
+
+/**
+ * Mirrors observed Flagsmith behaviour for condition `property`: `null` is accepted,
+ * a blank string is a 400, and omitting the field entirely crashes the API with a 500.
+ */
+function validateSegment(segment: CreateSegmentRequest): Response | null {
+  const stack = [...segment.rules];
+  while (stack.length > 0) {
+    const rule = stack.pop();
+    if (!rule) break;
+    for (const condition of rule.conditions ?? []) {
+      if (condition.property === "") {
+        return json(400, {
+          rules: [{ conditions: [{ property: ["This field may not be blank."] }] }],
+        });
+      }
+      if (!("property" in condition)) return new Response("Server Error (500)", { status: 500 });
+    }
+    stack.push(...(rule.rules ?? []));
+  }
+  return null;
 }

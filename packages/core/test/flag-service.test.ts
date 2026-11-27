@@ -78,6 +78,31 @@ describe("FlagService", () => {
     expect(overrides[1]).toMatchObject({ priority: 1, enabled: true });
   });
 
+  it("does not echo empty multivariate variants back to Flagsmith (rejected for standard flags)", async () => {
+    const prod = fake.environment("Production");
+    const { feature } = await flags.ensureFeature("fg_new_checkout", "x");
+    fake.state(prod.api_key, feature.id).segment_overrides.push({
+      segment: { id: 1 },
+      priority: 0,
+      enabled: true,
+      value: null,
+      variants: [],
+    });
+
+    await expect(flags.setRolloutPercentage(prod, feature.id, 5)).resolves.toMatchObject({
+      percentage: 5,
+    });
+    await expect(flags.kill(prod, feature.id)).resolves.toMatchObject({ percentage: 0 });
+  });
+
+  it("sends an explicit null property in percentage-split conditions", async () => {
+    const prod = fake.environment("Production");
+    const { feature } = await flags.ensureFeature("fg_new_checkout", "x");
+    await flags.setRolloutPercentage(prod, feature.id, 5);
+    const condition = fake.segments[0]?.rules[0]?.rules?.[0]?.conditions?.[0];
+    expect(condition).toEqual({ operator: "PERCENTAGE_SPLIT", property: null, value: "5" });
+  });
+
   it("kill switch turns everything off, including overrides, and is idempotent", async () => {
     const prod = fake.environment("Production");
     const { feature } = await flags.ensureFeature("fg_new_checkout", "x");

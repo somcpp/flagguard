@@ -95,27 +95,39 @@ export interface FlagValue {
   value: string;
 }
 
+/** Multivariate weight. Only valid on multivariate features. */
+export interface FlagVariant {
+  id: number;
+  weight: number;
+}
+
 export interface SegmentOverride {
   segment: { id: number };
   priority: number;
   enabled: boolean;
   value: FlagValue | null;
+  variants?: FlagVariant[];
 }
 
 export interface FlagState {
   environment_default: {
     enabled: boolean;
     value: FlagValue | null;
+    variants?: FlagVariant[];
   };
   segment_overrides: SegmentOverride[];
 }
 
+export interface SegmentOverrideRequest {
+  segment: { id: number };
+  priority?: number;
+  enabled?: boolean;
+  value?: FlagValue | null;
+  /** Must be omitted for standard (non-multivariate) features, even when empty. */
+  variants?: FlagVariant[];
+}
+
 export interface UpdateFlagStateRequest {
   environment_default?: { enabled?: boolean; value?: FlagValue | null };
-  segment_overrides?: {
-    segment: { id: number };
-    priority?: number;
-    enabled?: boolean;
-    value?: FlagValue | null;
-  }[];
+  segment_overrides?: SegmentOverrideRequest[];
 }

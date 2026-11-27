@@ -1,6 +1,14 @@
 import { type Logger, silentLogger } from "../logger.js";
 import { type FlagsmithClient } from "./client.js";
-import type { Environment, Feature, FlagState, Segment, SegmentRule } from "./types.js";
+import type {
+  Environment,
+  Feature,
+  FlagState,
+  Segment,
+  SegmentOverride,
+  SegmentOverrideRequest,
+  SegmentRule,
+} from "./types.js";
 
 export interface RolloutState {
   environment: string;
@@ -30,7 +38,7 @@ export function percentageSplitRules(percentage: number): SegmentRule[] {
       rules: [
         {
           type: "ANY",
-          conditions: [{ operator: "PERCENTAGE_SPLIT", property: "", value: String(percentage) }],
+          conditions: [{ operator: "PERCENTAGE_SPLIT", property: null, value: String(percentage) }],
         },
       ],
     },
@@ -51,6 +59,21 @@ export function readPercentage(segment: Pick<Segment, "rules">): number | null {
     stack.push(...(rule.rules ?? []));
   }
   return null;
+}
+
+/**
+ * Convert an override read from the API into one that can be written back.
+ * Flagsmith returns `variants: []` for standard features but rejects that same
+ * field on write ("Feature is not multivariate"), so it is only echoed when set.
+ */
+export function toOverrideRequest(override: SegmentOverride): SegmentOverrideRequest {
+  return {
+    segment: { id: override.segment.id },
+    priority: override.priority,
+    enabled: override.enabled,
+    value: override.value,
+    ...(override.variants && override.variants.length > 0 ? { variants: override.variants } : {}),
+  };
 }
 
 function assertPercentage(percentage: number): void {
@@ -136,7 +159,7 @@ export class FlagService {
     const updated = await this.client.updateFlagState(environment.api_key, featureId, {
       environment_default: { enabled: percentage === 100 },
       segment_overrides: [
-        ...others,
+        ...others.map(toOverrideRequest),
         {
           segment: { id: segment.id },
           // Lowest priority: explicit team overrides (e.g. "internal users") still win.
@@ -168,7 +191,7 @@ export class FlagService {
     const updated = await this.client.updateFlagState(environment.api_key, featureId, {
       environment_default: { enabled: false },
       segment_overrides: state.segment_overrides.map((override) => ({
-        ...override,
+        ...toOverrideRequest(override),
         enabled: false,
       })),
     });
