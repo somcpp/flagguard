@@ -1,0 +1,76 @@
+# FlagGuard policy. Copy to `flagguard.yml` (repo root) or `.github/flagguard.yml`.
+# Every section is optional except `version`; the values below are the defaults.
+version: 1
+
+# Flagsmith environments FlagGuard manages (matched by name, case-insensitive).
+# Production environments are only ever changed through a gated rollout.
+environments:
+  - name: Development
+    production: false
+  - name: Staging
+    production: false
+  - name: Production
+    production: true
+
+flags:
+  prefix: fg_ # flags created by FlagGuard start with this
+  owner: flagguard
+
+# How risky a change is: matching rules add their weight to a 0-100 score.
+risk:
+  threshold: 50 # score at or above this gets a flag
+  ignore:
+    - "**/*.{test,spec}.*"
+    - "**/__tests__/**"
+    - "**/*.md"
+    - "docs/**"
+  rules:
+    - id: payments
+      description: "Moves money: payments, checkout, billing or pricing"
+      weight: 60
+      paths:
+        ["**/{payment,payments,checkout,billing,pricing}/**", "**/*{payment,checkout,billing}*"]
+      patterns: ["\\bstripe\\b", "\\b(charge|refund|invoice)\\w*\\("]
+    - id: auth
+      description: Authentication, sessions or permissions
+      weight: 50
+      paths: ["**/{auth,authn,authz,session,sessions,permissions}/**", "**/*{auth,login,session}*"]
+      patterns: ["\\b(jwt|bcrypt|password|oauth)\\b"]
+    - id: data-migration
+      description: Database schema or data migrations
+      weight: 45
+      paths: ["**/migrations/**", "**/*.sql", "**/prisma/schema.prisma"]
+      patterns: ["\\b(ALTER|DROP)\\s+TABLE\\b"]
+    - id: external-integration
+      description: Calls to third-party services
+      weight: 25
+      paths: ["**/{integrations,clients,webhooks}/**"]
+      patterns: ["\\bfetch\\(\\s*[\"'`]https?://", "\\baxios\\."]
+
+rollout:
+  stages: [5, 25, 50, 100] # % of identities; strictly increasing, ends at 100
+  minStageMinutes: 10 # a stage must be healthy this long before advancing
+
+# When to pull the kill switch (new-code cohort vs old-code cohort).
+guardrails:
+  minSamples: 50
+  maxErrorRate: 0.05
+  maxErrorRateRatio: 2
+  maxLatencyRatio: 1.5
+
+# Where the agent may act alone: auto | approval | never
+autonomy:
+  allowUnsafe: false # must be true to set any risk-increasing action to "auto"
+  actions:
+    create_flag: auto
+    suggest_code_patch: auto
+    enable_in_non_production: auto
+    start_rollout: approval
+    advance_rollout: approval
+    complete_rollout: approval
+    kill_flag: auto # can be "approval", never "never"
+    open_cleanup_pr: auto
+    archive_flag: approval
+
+cleanup:
+  staleAfterDays: 7
