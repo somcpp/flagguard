@@ -42,9 +42,12 @@ class FakeLlm implements LlmClient {
   constructor(private readonly reply: unknown) {}
   complete(request: LlmRequest): Promise<LlmResponse> {
     this.requests.push(request);
-    if (this.reply instanceof Error) return Promise.reject(this.reply);
+    const reply = Array.isArray(this.reply)
+      ? (this.reply as unknown[])[Math.min(this.requests.length - 1, this.reply.length - 1)]
+      : this.reply;
+    if (reply instanceof Error) return Promise.reject(reply);
     return Promise.resolve({
-      text: typeof this.reply === "string" ? this.reply : JSON.stringify(this.reply),
+      text: typeof reply === "string" ? reply : JSON.stringify(reply),
       model: this.model,
       usage: { inputTokens: 1200, outputTokens: 300 },
     });
@@ -130,7 +133,7 @@ describe("validateSuggestions", () => {
           file: "src/checkout/pay.ts",
           startLine: 2,
           endLine: 4,
-          replacement: "x",
+          replacement: 'check("__FLAG_NAME__")',
           explanation: "ok",
         },
         {
@@ -360,5 +363,69 @@ describe("suggestions must gate on the new flag", () => {
     });
     expect(report.suggestions.map((s) => s.explanation)).toEqual(["right flag"]);
     expect(report.droppedSuggestions).toBe(1);
+  });
+});
+
+describe("self-correction", () => {
+  const wrong = {
+    file: "src/checkout/pay.ts",
+    startLine: 2,
+    endLine: 3,
+    replacement: ["if (await isEnabled(deps.flagName)) {", "  const intent = 1;"].join("\n"),
+    explanation: "reuses the existing flag",
+  };
+  const fixedReplacement = ['if (await isEnabled("__FLAG_NAME__")) {', "  const intent = 1;"].join(
+    "\n",
+  );
+  const review = {
+    riskScore: 80,
+    summary: "s",
+    flag: { name: "stripe_payments", description: "d" },
+    suggestions: [wrong],
+  };
+
+  it("tells the model what was wrong and accepts the fixed suggestion", async () => {
+    const llm = new FakeLlm([
+      review,
+      { suggestions: [{ ...wrong, replacement: fixedReplacement, explanation: "fixed" }] },
+    ]);
+    const report = await analyzePullRequest({
+      diff: DIFF,
+      pr: { title: "t" },
+      policy: defaultPolicy(),
+      llm,
+    });
+
+    expect(llm.requests).toHaveLength(2);
+    expect(llm.requests[1]?.prompt).toContain("never checks the new flag");
+    expect(report.suggestions.map((s) => s.explanation)).toEqual(["fixed"]);
+    expect(report.suggestions[0]?.replacement).toContain('"fg_stripe_payments"');
+    expect(report).toMatchObject({ repairedSuggestions: 1, droppedSuggestions: 0 });
+    expect(report.usage?.inputTokens).toBe(2400);
+    expect(renderGuardComment({ report, policy: defaultPolicy() })).toContain("1 self-corrected");
+  });
+
+  it("explains out-of-range lines with the lines that were actually added", async () => {
+    const llm = new FakeLlm([
+      { ...review, suggestions: [{ ...wrong, startLine: 1, endLine: 2 }] },
+      { suggestions: [] },
+    ]);
+    const report = await analyzePullRequest({
+      diff: DIFF,
+      pr: { title: "t" },
+      policy: defaultPolicy(),
+      llm,
+    });
+    expect(llm.requests[1]?.prompt).toContain("added lines in src/checkout/pay.ts: 2-4, 6-7");
+    expect(report).toMatchObject({ repairedSuggestions: 0, droppedSuggestions: 1 });
+  });
+
+  it("does not retry when every suggestion is valid", async () => {
+    const llm = new FakeLlm({
+      ...review,
+      suggestions: [{ ...wrong, replacement: fixedReplacement }],
+    });
+    await analyzePullRequest({ diff: DIFF, pr: { title: "t" }, policy: defaultPolicy(), llm });
+    expect(llm.requests).toHaveLength(1);
   });
 });

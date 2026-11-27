@@ -198,14 +198,47 @@ export async function readGitHubEvent(env: NodeJS.ProcessEnv = process.env): Pro
 export const COMMANDS = ["status", "approve", "reject", "kill", "help"] as const;
 export type SlashCommand = (typeof COMMANDS)[number];
 
-/** Parse `/flagguard <command> [reason...]` from the first line of a comment. */
-export function parseSlashCommand(body: string): { command: SlashCommand; args: string } | null {
-  const match = /^\s*\/flagguard(?:\s+(\S+))?(?:\s+(.*))?$/im.exec(body.split("\n")[0] ?? "");
-  if (!match) return null;
-  const command = (match[1] ?? "help").toLowerCase();
+/** Levenshtein distance, for forgiving typos like "/flaggaurd". */
+function editDistance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let diagonal = row[0] ?? 0;
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const above = row[j] ?? 0;
+      row[j] = Math.min(
+        above + 1,
+        (row[j - 1] ?? 0) + 1,
+        diagonal + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      diagonal = above;
+    }
+  }
+  return row[b.length] ?? 0;
+}
+
+export interface ParsedCommand {
+  command: SlashCommand;
+  args: string;
+  /** Set when the prefix was a near-miss such as "/flaggaurd". */
+  misspelledAs?: string;
+}
+
+/**
+ * Parse `/flagguard <command> [reason...]` from the first line of a comment.
+ * Prefixes within two edits of "flagguard" are accepted, so a typo gets a
+ * helpful reply instead of silence. Other slash commands are ignored.
+ */
+export function parseSlashCommand(body: string): ParsedCommand | null {
+  const match = /^\s*\/(\w+)(?:\s+(\S+))?(?:\s+(.*))?$/.exec(body.split("\n")[0] ?? "");
+  if (!match?.[1]) return null;
+  const distance = editDistance(match[1].toLowerCase(), "flagguard");
+  if (distance > 2) return null;
+  const command = (match[2] ?? "help").toLowerCase();
   return {
     command: (COMMANDS as readonly string[]).includes(command) ? (command as SlashCommand) : "help",
-    args: (match[2] ?? "").trim(),
+    args: (match[3] ?? "").trim(),
+    ...(distance > 0 ? { misspelledAs: `/${match[1]}` } : {}),
   };
 }
 

@@ -460,12 +460,15 @@ export class RolloutEngine {
     }
     if (live !== record.percentage) {
       // Someone changed it outside FlagGuard (e.g. in the Flagsmith dashboard): trust Flagsmith.
-      this.logger.warn("rollout drifted from FlagGuard state", {
-        flag,
-        environment,
-        recorded: record.percentage,
-        live,
-      });
+      // With no stored state (a fresh CI runner) there is nothing to drift from, so stay quiet.
+      if (stored) {
+        this.logger.warn("rollout drifted from FlagGuard state", {
+          flag,
+          environment,
+          recorded: record.percentage,
+          live,
+        });
+      }
       record.percentage = live;
       // With no history (e.g. a fresh CI runner) the stage start is unknown, not "now".
       record.stageStartedAt = stored ? this.clock().toISOString() : null;

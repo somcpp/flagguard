@@ -271,7 +271,13 @@ async function onComment(
   if (!parsed) return { event: "issue_comment", summary: "No /flagguard command" };
 
   const reply = async (title: string, body: string): Promise<GitHubRunResult> => {
-    await github.createComment(issue.number, renderCommandReply(parsed.command, [{ title, body }]));
+    const note = parsed.misspelledAs
+      ? `\n\n<sub>Read \`${parsed.misspelledAs}\` as \`/flagguard\`.</sub>`
+      : "";
+    await github.createComment(
+      issue.number,
+      renderCommandReply(parsed.command, [{ title, body: body + note }]),
+    );
     return { event: "issue_comment", summary: `${parsed.command}: ${title}` };
   };
 
