@@ -131,6 +131,9 @@ export async function analyzePullRequest(input: {
         replacement: s.replacement
           .replaceAll(FLAG_PLACEHOLDER, flagName)
           .replaceAll("<FLAG>", flagName),
+        explanation: s.explanation
+          .replaceAll(FLAG_PLACEHOLDER, flagName)
+          .replaceAll("<FLAG>", flagName),
       }));
       // A suggestion that never mentions the new flag cannot gate the change on it
       // (models like to copy an existing flag variable instead), so it is dropped.
