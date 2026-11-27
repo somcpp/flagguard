@@ -41,33 +41,56 @@ interface ClientOptions {
   timeoutMs?: number;
 }
 
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+/** Pull the human-readable message out of a provider error body. */
+function errorMessage(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: string } | string };
+    const message = typeof parsed.error === "string" ? parsed.error : parsed.error?.message;
+    if (message) return message;
+  } catch {
+    // not JSON
+  }
+  return text.slice(0, 200);
+}
+
 async function postJson(
   fetchImpl: FetchLike,
   url: string,
   headers: Record<string, string>,
   body: unknown,
   timeoutMs: number,
+  retries = 2,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (cause) {
-    throw new LlmError(`LLM request failed: ${(cause as Error).message}`, { cause });
-  }
-  const text = await response.text();
-  if (!response.ok) {
+  for (let attempt = 0; ; attempt++) {
+    let response: Response;
+    try {
+      response = await fetchImpl(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (cause) {
+      throw new LlmError(`LLM request failed: ${(cause as Error).message}`, { cause });
+    }
+    const text = await response.text();
+    if (response.ok) {
+      try {
+        return JSON.parse(text) as unknown;
+      } catch (cause) {
+        throw new LlmError("LLM API returned invalid JSON", { cause });
+      }
+    }
+    // Overloaded or rate-limited providers usually recover within seconds.
+    if (RETRYABLE.has(response.status) && attempt < retries) {
+      await sleep(2000 * 2 ** attempt);
+      continue;
+    }
     // Never echo request headers: they contain the API key.
-    throw new LlmError(`LLM API returned ${response.status}: ${text.slice(0, 300)}`);
-  }
-  try {
-    return JSON.parse(text) as unknown;
-  } catch (cause) {
-    throw new LlmError("LLM API returned invalid JSON", { cause });
+    throw new LlmError(`LLM API returned ${response.status}: ${errorMessage(text)}`);
   }
 }
 

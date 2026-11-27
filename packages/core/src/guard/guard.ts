@@ -56,7 +56,7 @@ function rulesSummary(findings: RiskFinding[]): string {
   const ids = [...new Set(findings.map((f) => f.description))];
   return ids.length === 0
     ? "No risky patterns found."
-    : `Touches ${ids.map((d) => d.charAt(0).toLowerCase() + d.slice(1)).join("; ")}.`;
+    : `Matched risk rules: ${ids.join("; ")}.`;
 }
 
 /**

@@ -54,6 +54,15 @@ async function readDiff(options: { diff?: string; base: string }): Promise<strin
   return stdout;
 }
 
+async function currentBranch(): Promise<string | undefined> {
+  try {
+    const { stdout } = await run("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+    return stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** `flagguard guard`: analyse a local diff (defaults to the current branch vs main). */
 export async function guardLocal(
   options: GlobalOptions & {
@@ -71,7 +80,7 @@ export async function guardLocal(
   const diff = await readDiff(options);
   const report = await analyzePullRequest({
     diff,
-    pr: { title: options.title ?? "Local changes" },
+    pr: { title: options.title ?? "Local changes", branch: await currentBranch() },
     policy,
     llm: options.noAi ? null : llmFromEnv(),
     logger,
