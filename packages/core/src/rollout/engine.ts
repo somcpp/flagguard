@@ -450,8 +450,8 @@ export class RolloutEngine {
 
   /** Load bookkeeping and reconcile it with what the flag system actually serves. */
   private async load(flag: string, environment: string): Promise<RolloutRecord> {
-    const record =
-      (await this.state.get(flag, environment)) ?? newRecord(flag, environment, this.clock());
+    const stored = await this.state.get(flag, environment);
+    const record = stored ?? newRecord(flag, environment, this.clock());
     let live: number;
     try {
       live = await this.backend.getPercentage(environment, flag);
@@ -467,7 +467,8 @@ export class RolloutEngine {
         live,
       });
       record.percentage = live;
-      record.stageStartedAt = this.clock().toISOString();
+      // With no history (e.g. a fresh CI runner) the stage start is unknown, not "now".
+      record.stageStartedAt = stored ? this.clock().toISOString() : null;
       record.status =
         live === 0
           ? record.status === "killed"

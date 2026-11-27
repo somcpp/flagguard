@@ -16,6 +16,12 @@ export * from "./audit/audit-log.js";
 export * from "./rollout/state.js";
 export * from "./rollout/backend.js";
 export * from "./rollout/engine.js";
+export * from "./diff/parse.js";
+export * from "./risk/rules.js";
+export * from "./risk/llm-review.js";
+export * from "./llm/client.js";
+export * from "./guard/guard.js";
+export * from "./guard/comment.js";
 
 import { type Env } from "./config/env.js";
 import { FlagsmithClient } from "./flagsmith/client.js";
