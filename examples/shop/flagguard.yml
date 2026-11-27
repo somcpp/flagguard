@@ -1,0 +1,19 @@
+# Demo policy: short stages and small samples so the whole loop fits in a demo video.
+# Real services should keep the defaults (10 min stages, 50 samples); see flagguard.example.yml.
+version: 1
+
+environments:
+  - name: Development
+  - name: Staging
+  - name: Production
+    production: true
+
+rollout:
+  stages: [5, 25, 50, 100]
+  minStageMinutes: 0.5
+
+guardrails:
+  minSamples: 20
+  maxErrorRate: 0.05
+  maxErrorRateRatio: 2
+  maxLatencyRatio: 1.5

@@ -61,7 +61,7 @@ FlagGuard is being built in phases during the
 
 - [x] **Phase 1: Core.** Policy schema, autonomy engine, typed Flagsmith client, rollout primitives, kill switch
 - [x] **Phase 2: Demo app.** A shop app wired to Flagsmith (local evaluation), a traffic simulator, per-cohort health metrics and chaos injection
-- [ ] **Phase 3: Rollout engine.** Staged rollouts, health guardrails, audit log, CLI
+- [x] **Phase 3: Rollout engine.** Staged rollouts with approval gates, cohort-based health guardrails, automatic kill switch, audit log, `flagguard` CLI
 - [ ] **Phase 4: Guard.** PR risk analysis (rules + LLM), code wrapping, GitHub Action, `/flagguard approve`
 - [ ] **Phase 5: Dashboard.** Timeline, approvals and live health
 - [ ] **Phase 6: Cleanup.** Stale-flag removal PRs
@@ -70,7 +70,8 @@ FlagGuard is being built in phases during the
 
 ```
 packages/
-  core/        @flagguard/core: policy, autonomy rules, Flagsmith client, rollout primitives, metrics
+  core/        @flagguard/core: policy, autonomy, Flagsmith client, rollout engine, guardrails, audit log
+  cli/         @flagguard/cli: the `flagguard` command
 examples/
   shop/        demo storefront + traffic simulator (the app FlagGuard protects)
 docs/
@@ -102,6 +103,35 @@ npm run traffic   # second terminal: steady checkout traffic
 Works offline out of the box. Add `FLAGSMITH_SERVER_KEY` to `.env` to evaluate the flag with
 Flagsmith. Click **Inject bug into new checkout** and watch the new-checkout cohort's error
 rate climb while the legacy cohort stays healthy. See [examples/shop](examples/shop).
+
+## Watch the agent save production (2 minutes, no account needed)
+
+Three terminals from the repository root, after `npm install && npm run build`:
+
+```bash
+# 1. the app being protected
+npm run shop
+# 2. real traffic
+npm run traffic
+# 3. the agent
+alias fg='npm run -s flagguard -- --offline http://localhost:3000 --policy examples/shop/flagguard.yml'
+fg propose fg_new_checkout        # 🤖 "Start rollout at 5%?"  → pending approval
+fg approve fg_new_checkout        # 🧑 you approve
+fg advance fg_new_checkout --force  # 🧑 25%
+fg watch fg_new_checkout          # 🤖 watching cohort health every 5s
+```
+
+Now click **Inject bug into new checkout** at http://localhost:3000. Within one check:
+
+```
+25%  UNHEALTHY  new: 41 req, 36.6% err, p95 315ms  │  old: 122 req, 0.0% err, p95 108ms
+ 🛑 KILL SWITCH PULLED: fg_new_checkout is OFF in Production
+   36.6% errors on new code vs 0.0% on old code (max 2x); p95 315ms on new code vs 108ms on old code (max 1.5x)
+```
+
+`fg audit fg_new_checkout` shows the full story: who proposed, who approved, and why the agent
+killed it. Drop `--offline` and the exact same commands drive Flagsmith via the Admin API.
+See the [CLI reference](packages/cli).
 
 ## Configuration
 

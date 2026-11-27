@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 /* eslint-disable no-console -- this is the process entry point */
 import { readFile } from "node:fs/promises";
-import { SlidingWindowMetrics } from "@flagguard/core";
+import { loadDotEnv, SlidingWindowMetrics } from "@flagguard/core";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { loadShopConfig } from "./config.js";
-import { loadDotEnv } from "./env-file.js";
 import { type FlagProvider, FlagsmithFlagProvider, OfflineFlagProvider } from "./flags.js";
 
 loadDotEnv();
