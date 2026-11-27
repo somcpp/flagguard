@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlagGuard Demo Shop</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --panel: #171a23;
+        --border: #262b38;
+        --text: #e6e8ee;
+        --muted: #8b93a7;
+        --accent: #7c6cf6;
+        --good: #3ccf91;
+        --bad: #ff5d6c;
+        --warn: #f5b74f;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 32px;
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 {
+        font-size: 20px;
+        margin: 0;
+      }
+      .pill {
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        color: var(--muted);
+      }
+      main {
+        display: grid;
+        grid-template-columns: 1.3fr 1fr;
+        gap: 24px;
+        padding: 24px 32px;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 0 0 14px;
+      }
+      .products {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+      .product {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+      }
+      .product .emoji {
+        font-size: 40px;
+      }
+      .product .name {
+        margin: 8px 0 4px;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .product .price {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      button {
+        cursor: pointer;
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 16px;
+        font-weight: 600;
+        font-size: 14px;
+        background: var(--accent);
+        color: white;
+      }
+      button.secondary {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+      button.danger {
+        background: var(--bad);
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+      .user {
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      #result {
+        margin-top: 16px;
+        padding: 14px;
+        border-radius: 10px;
+        border: 1px dashed var(--border);
+        min-height: 52px;
+        font-size: 14px;
+      }
+      #result.new {
+        border-color: var(--accent);
+        background: rgba(124, 108, 246, 0.08);
+      }
+      #result.legacy {
+        border-color: var(--muted);
+      }
+      #result.error {
+        border-color: var(--bad);
+        background: rgba(255, 93, 108, 0.08);
+      }
+      .cohorts {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .cohort {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .cohort h3 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        white-space: nowrap;
+      }
+      .cohort h3 .pill {
+        font-size: 10px;
+        padding: 2px 8px;
+      }
+      @media (max-width: 900px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+      .metric {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        padding: 4px 0;
+        color: var(--muted);
+      }
+      .metric b {
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+      }
+      .bad b {
+        color: var(--bad);
+      }
+      .chaos-on {
+        color: var(--warn);
+      }
+      footer {
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        padding: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🛒 FlagGuard Demo Shop</h1>
+      <span class="pill" id="status">loading…</span>
+    </header>
+
+    <main>
+      <section>
+        <h2>Storefront</h2>
+        <div class="products" id="products"></div>
+        <div class="row">
+          <button id="buy">Buy one of each</button>
+          <button class="secondary" id="new-user">Switch user</button>
+          <span class="user">signed in as <span id="user-id"></span></span>
+        </div>
+        <div id="result">
+          Click “Buy” to check out. Which checkout you get is decided by Flagsmith.
+        </div>
+      </section>
+
+      <section>
+        <h2>Live health · last <span id="window">2</span> min</h2>
+        <div class="cohorts">
+          <div class="cohort" id="treatment">
+            <h3>✨ New checkout <span class="pill">flag on</span></h3>
+          </div>
+          <div class="cohort" id="control">
+            <h3>📦 Legacy checkout <span class="pill">flag off</span></h3>
+          </div>
+        </div>
+        <h2 style="margin-top: 20px">Chaos (demo only)</h2>
+        <div class="row" style="margin-top: 0">
+          <button class="danger" id="chaos-on">Inject bug into new checkout</button>
+          <button class="secondary" id="chaos-off">Fix it</button>
+        </div>
+        <p class="user" id="chaos-state"></p>
+      </section>
+    </main>
+    <footer>
+      FlagGuard watches these numbers and kills the flag if the new checkout misbehaves.
+    </footer>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const fmt = (cents) => `$${(cents / 100).toFixed(2)}`;
+      const randomUser = () => `user-${1 + Math.floor(Math.random() * 500)}`;
+
+      let userId = localStorage.getItem("flagguard-user") ?? randomUser();
+      const setUser = (id) => {
+        userId = id;
+        localStorage.setItem("flagguard-user", id);
+        $("user-id").textContent = id;
+      };
+      setUser(userId);
+
+      const products = await (await fetch("/api/products")).json();
+      $("products").innerHTML = products
+        .map(
+          (p) =>
+            `<div class="product"><div class="emoji">${p.emoji}</div><div class="name">${p.name}</div><div class="price">${fmt(p.priceCents)}</div></div>`,
+        )
+        .join("");
+
+      $("new-user").onclick = () => setUser(randomUser());
+
+      $("buy").onclick = async () => {
+        const items = products.map((p) => ({ productId: p.id, quantity: 1 }));
+        const res = await fetch("/api/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, items }),
+        });
+        const body = await res.json();
+        const el = $("result");
+        if (!res.ok) {
+          el.className = "error";
+          el.textContent = `❌ ${body.error} (${body.checkout ?? "unknown"} checkout)`;
+        } else if (body.checkout === "new") {
+          el.className = "new";
+          el.textContent = `✨ New one-page checkout · paid ${fmt(body.totalCents)} (10% bundle discount) · order ${body.orderId.slice(0, 8)}`;
+        } else {
+          el.className = "legacy";
+          el.textContent = `📦 Legacy checkout · paid ${fmt(body.totalCents)} · order ${body.orderId.slice(0, 8)}`;
+        }
+      };
+
+      const setChaos = async (method, body) => {
+        const res = await fetch("/admin/chaos", {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        if (res.status === 401) alert("Admin endpoints are protected by SHOP_ADMIN_TOKEN");
+        safeRefresh();
+      };
+      $("chaos-on").onclick = () => setChaos("PUT", { errorRate: 0.4, extraLatencyMs: 250 });
+      $("chaos-off").onclick = () => setChaos("DELETE");
+
+      const renderCohort = (el, title, s) => {
+        const pct = (x) => `${(x * 100).toFixed(1)}%`;
+        el.innerHTML = `${el.querySelector("h3").outerHTML}
+          <div class="metric">requests <b>${s.requests}</b></div>
+          <div class="metric ${s.errorRate > 0.05 ? "bad" : ""}">error rate <b>${pct(s.errorRate)}</b></div>
+          <div class="metric">p50 latency <b>${Math.round(s.p50LatencyMs)} ms</b></div>
+          <div class="metric">p95 latency <b>${Math.round(s.p95LatencyMs)} ms</b></div>`;
+      };
+
+      async function refresh() {
+        const status = await (await fetch("/api/status")).json();
+        const provider =
+          status.provider === "offline"
+            ? `offline · ${status.offlinePercentage}% rollout`
+            : "Flagsmith (local evaluation)";
+        $("status").textContent = `flag ${status.flag} · ${provider}`;
+        const chaosOn = status.chaos.errorRate > 0 || status.chaos.extraLatencyMs > 0;
+        $("chaos-state").innerHTML = chaosOn
+          ? `<span class="chaos-on">⚠ Bug active: ${Math.round(status.chaos.errorRate * 100)}% errors, +${status.chaos.extraLatencyMs} ms in the new checkout</span>`
+          : "No bugs injected.";
+
+        const m = await (await fetch(`/flagguard/metrics/${status.flag}`)).json();
+        $("window").textContent = Math.round(m.windowMs / 60000);
+        renderCohort($("treatment"), "New", m.treatment);
+        renderCohort($("control"), "Legacy", m.control);
+      }
+      async function safeRefresh() {
+        try {
+          await refresh();
+        } catch {
+          $("status").textContent = "⚠ shop unreachable, retrying…";
+        }
+      }
+      safeRefresh();
+      setInterval(safeRefresh, 2000);
+    </script>
+  </body>
+</html>

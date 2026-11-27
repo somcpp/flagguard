@@ -1,0 +1,26 @@
+{
+  "name": "@flagguard/example-shop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Demo storefront whose new checkout is gated by a Flagsmith flag. Records per-cohort health metrics for FlagGuard to watch.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "flagguard-shop": "./dist/server.js",
+    "flagguard-traffic": "./dist/simulate.js"
+  },
+  "scripts": {
+    "start": "node dist/server.js",
+    "simulate": "node dist/simulate.js"
+  },
+  "dependencies": {
+    "@flagguard/core": "0.1.0",
+    "@hono/node-server": "^2.1.11",
+    "flagsmith-nodejs": "^8.1.2",
+    "hono": "^4.13.23",
+    "zod": "^4.6.7"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}
