@@ -31,14 +31,17 @@ import {
 
 const run = promisify(execFile);
 
-export function llmFromEnv(env: NodeJS.ProcessEnv = process.env): LlmClient | null {
+export function llmFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  logger?: Logger,
+): LlmClient | null {
   const parsed = EnvSchema.pick({
     LLM_PROVIDER: true,
     LLM_API_KEY: true,
     LLM_MODEL: true,
     LLM_BASE_URL: true,
   }).parse(env);
-  return createLlmClient(parsed);
+  return createLlmClient(parsed, { env, ...(logger ? { logger } : {}) });
 }
 
 async function readDiff(options: { diff?: string; base: string }): Promise<string> {
@@ -82,7 +85,7 @@ export async function guardLocal(
     diff,
     pr: { title: options.title ?? "Local changes", branch: await currentBranch() },
     policy,
-    llm: options.noAi ? null : llmFromEnv(),
+    llm: options.noAi ? null : llmFromEnv(process.env, logger),
     logger,
   });
 
@@ -163,7 +166,7 @@ async function onPullRequest(
     diff: await github.getPullDiff(pr.number),
     pr: { title: pr.title, body: pr.body ?? undefined, number: pr.number, branch: pr.head.ref },
     policy,
-    llm: llmFromEnv(env),
+    llm: llmFromEnv(env, logger),
     logger,
   });
 

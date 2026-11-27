@@ -8,13 +8,14 @@ import {
   FlagGuardError,
   human,
   HttpMetricsSource,
+  KeyhopperClient,
   loadEnv,
 } from "@flagguard/core";
 import { Command, Option } from "commander";
 import pc from "picocolors";
 import { type Context, createCliLogger, createContext, type GlobalOptions } from "./context.js";
 import { formatAudit, formatHealth, formatResult, formatStatus } from "./format.js";
-import { guardLocal, runGitHub } from "./guard-commands.js";
+import { guardLocal, llmFromEnv, runGitHub } from "./guard-commands.js";
 
 export interface IO {
   out: (text: string) => void;
@@ -192,11 +193,27 @@ export function createProgram(
         );
       }
 
-      io.out(
-        process.env.LLM_API_KEY
-          ? `${pc.green("✔")} LLM key present (${process.env.LLM_PROVIDER ?? "gemini"})`
-          : `${pc.yellow("!")} no LLM key: risk analysis will use rules only`,
-      );
+      try {
+        const llm = llmFromEnv();
+        if (!llm) {
+          io.out(`${pc.yellow("!")} no LLM keys: risk analysis will use rules only`);
+        } else if (llm instanceof KeyhopperClient) {
+          const providers = llm.describe();
+          ok(
+            `LLM via keyhopper: ${providers.map((p) => `${p.provider} (${p.keys} key${p.keys === 1 ? "" : "s"})`).join(" → ")}`,
+          );
+          for (const result of await llm.check()) {
+            const label = `${result.provider}/${result.model} [${result.key}]`;
+            if (result.ok) ok(`  ${label} ${pc.dim(`${String(result.ms ?? "?")}ms`)}`);
+            else
+              io.out(`${pc.yellow("!")}   ${label} ${result.status ?? ""} ${result.error ?? ""}`);
+          }
+        } else {
+          ok(`LLM: ${llm.provider} (${llm.model})`);
+        }
+      } catch (error) {
+        bad(`LLM: ${(error as Error).message}`);
+      }
       io.out(problems === 0 ? pc.green("\nAll good.") : pc.red(`\n${problems} problem(s) found.`));
       process.exitCode = problems === 0 ? EXIT.ok : EXIT.error;
     });
