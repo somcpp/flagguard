@@ -97,3 +97,33 @@ export async function newCheckout(
   }
   return { orderId: randomUUID(), totalCents, checkout: "new" };
 }
+
+export interface SavedCard {
+  customerId: string;
+  paymentMethodId: string;
+}
+
+/** Payment provider used for one-click payments with a saved card. */
+const PAYMENTS_API = process.env.PAYMENTS_API_URL ?? "https://api.payments.example/v1";
+
+/**
+ * Express checkout: charge the customer's saved card in one click, skipping the
+ * payment form entirely.
+ */
+export async function expressCheckout(items: readonly CartItem[], card: SavedCard): Promise<Order> {
+  const totalCents = priceCart(items);
+  const response = await fetch(`${PAYMENTS_API}/charges`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      amount: totalCents,
+      currency: "usd",
+      customer: card.customerId,
+      payment_method: card.paymentMethodId,
+      confirm: true,
+    }),
+  });
+  if (!response.ok) throw new CheckoutError("Card was declined", 500);
+  const charge = (await response.json()) as { id: string };
+  return { orderId: charge.id, totalCents, checkout: "new" };
+}
