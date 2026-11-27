@@ -8,7 +8,7 @@ It acts on its own when that makes things _safer_, and asks a human whenever it 
 
 [![CI](https://github.com/somcpp/flagguard/actions/workflows/ci.yml/badge.svg)](https://github.com/somcpp/flagguard/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Node](https://img.shields.io/badge/node-%3E%3D20.11-brightgreen)
+![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 
 </div>

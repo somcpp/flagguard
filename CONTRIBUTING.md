@@ -9,7 +9,7 @@ npm install
 npm run check   # format:check, lint, typecheck, test
 ```
 
-Requires Node.js 20.11 or newer.
+Requires Node.js 22 or newer.
 
 ## Workflow
 
