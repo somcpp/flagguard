@@ -1,0 +1,29 @@
+{
+  "name": "@flagguard/cli",
+  "version": "0.1.0",
+  "description": "flagguard: run gated, self-healing Flagsmith rollouts from your terminal or CI.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "flagguard": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@flagguard/core": "0.1.0",
+    "commander": "^15.1.0",
+    "picocolors": "^1.1.1"
+  }
+}

@@ -23,7 +23,8 @@
     "test:watch": "vitest",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test",
     "shop": "node examples/shop/dist/server.js",
-    "traffic": "node examples/shop/dist/simulate.js"
+    "traffic": "node examples/shop/dist/simulate.js",
+    "flagguard": "node packages/cli/dist/bin.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

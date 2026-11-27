@@ -1,9 +1,23 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/core" },
-    { "path": "packages/core/test" },
-    { "path": "examples/shop" },
-    { "path": "examples/shop/test" }
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/core/test"
+    },
+    {
+      "path": "packages/cli"
+    },
+    {
+      "path": "packages/cli/test"
+    },
+    {
+      "path": "examples/shop"
+    },
+    {
+      "path": "examples/shop/test"
+    }
   ]
 }
