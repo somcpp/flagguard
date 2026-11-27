@@ -1,0 +1,73 @@
+name: FlagGuard
+description: AI release reviewer that puts risky pull requests behind Flagsmith flags and runs gated, self-healing rollouts.
+author: FlagGuard contributors
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  github-token:
+    description: Token used to comment on the pull request.
+    default: ${{ github.token }}
+  flagsmith-api-key:
+    description: Flagsmith Organisation API key. Without it FlagGuard reviews but changes nothing.
+    required: false
+  flagsmith-project-id:
+    description: Numeric Flagsmith project ID.
+    required: false
+  flagsmith-api-url:
+    description: Flagsmith API URL (self-hosted only).
+    default: https://api.flagsmith.com
+  llm-provider:
+    description: gemini | openai-compatible
+    default: gemini
+  llm-api-key:
+    description: LLM API key. Without it FlagGuard uses rules only.
+    required: false
+  llm-model:
+    description: LLM model name.
+    required: false
+  llm-base-url:
+    description: Base URL for openai-compatible providers.
+    required: false
+  metrics-url:
+    description: App URL exposing /flagguard/metrics/:flag, enabling the health gate on /flagguard approve.
+    required: false
+  policy:
+    description: Path to flagguard.yml (auto-detected by default).
+    required: false
+  dry-run:
+    description: Review and comment, but never change Flagsmith.
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install FlagGuard
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --no-audit --no-fund --loglevel=error && npm run build --silent
+
+    - name: Run FlagGuard
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        FLAGSMITH_API_KEY: ${{ inputs.flagsmith-api-key }}
+        FLAGSMITH_PROJECT_ID: ${{ inputs.flagsmith-project-id }}
+        FLAGSMITH_API_URL: ${{ inputs.flagsmith-api-url }}
+        LLM_PROVIDER: ${{ inputs.llm-provider }}
+        LLM_API_KEY: ${{ inputs.llm-api-key }}
+        LLM_MODEL: ${{ inputs.llm-model }}
+        LLM_BASE_URL: ${{ inputs.llm-base-url }}
+        FLAGGUARD_METRICS_URL: ${{ inputs.metrics-url }}
+        FLAGGUARD_POLICY: ${{ inputs.policy }}
+        FLAGGUARD_DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        args=(github)
+        [ -n "$FLAGGUARD_POLICY" ] && args=(--policy "$FLAGGUARD_POLICY" "${args[@]}")
+        [ "$FLAGGUARD_DRY_RUN" = "true" ] && args+=(--dry-run)
+        node "${{ github.action_path }}/packages/cli/dist/bin.js" "${args[@]}"

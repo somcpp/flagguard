@@ -12,8 +12,9 @@ import {
 } from "@flagguard/core";
 import { Command, Option } from "commander";
 import pc from "picocolors";
-import { type Context, createContext, type GlobalOptions } from "./context.js";
+import { type Context, createCliLogger, createContext, type GlobalOptions } from "./context.js";
 import { formatAudit, formatHealth, formatResult, formatStatus } from "./format.js";
+import { guardLocal, runGitHub } from "./guard-commands.js";
 
 export interface IO {
   out: (text: string) => void;
@@ -425,6 +426,58 @@ export function createProgram(
         },
       ),
     );
+
+  /* ---------------------------------- guard ---------------------------------- */
+
+  program
+    .command("guard")
+    .description("review a diff for risk and propose a flag (default: current branch vs main)")
+    .option("--diff <file>", "read the diff from a file, or - for stdin")
+    .option("--base <ref>", "git ref to diff against", "main")
+    .option("--title <text>", "pull request title for context")
+    .option("--apply", "create the flag in Flagsmith (otherwise a dry run)")
+    .option("--no-ai", "skip the LLM review and use rules only")
+    .action(
+      async (opts: {
+        diff?: string;
+        base: string;
+        title?: string;
+        apply?: boolean;
+        ai: boolean;
+      }) => {
+        try {
+          const { report, markdown } = await guardLocal(
+            { ...globals(), ...opts, noAi: !opts.ai },
+            contextFactory,
+            createCliLogger(globals().verbose ? "debug" : "warn"),
+          );
+          emit(report, () => markdown);
+          process.exitCode = EXIT.ok;
+        } catch (error) {
+          io.err(pc.red(`✖ ${(error as Error).message}`));
+          process.exitCode = EXIT.error;
+        }
+      },
+    );
+
+  program
+    .command("github")
+    .description("GitHub Action entry point: review PRs and handle /flagguard comments")
+    .option("--dry-run", "review and comment, but never change Flagsmith")
+    .action(async (opts: { dryRun?: boolean }) => {
+      try {
+        const result = await runGitHub(
+          { ...globals(), ...opts },
+          contextFactory,
+          createCliLogger(globals().verbose ? "debug" : "info"),
+        );
+        io.out(`✔ ${result.summary}`);
+        process.exitCode = EXIT.ok;
+      } catch (error) {
+        io.err(pc.red(`✖ ${(error as Error).message}`));
+        process.exitCode = EXIT.error;
+      }
+    });
 
   /* ---------------------------------- audit ---------------------------------- */
 
