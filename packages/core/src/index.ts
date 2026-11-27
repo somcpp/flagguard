@@ -8,6 +8,7 @@ export * from "./flagsmith/types.js";
 export * from "./flagsmith/http.js";
 export * from "./flagsmith/client.js";
 export * from "./flagsmith/flag-service.js";
+export * from "./metrics/metrics.js";
 
 import { type Env } from "./config/env.js";
 import { FlagsmithClient } from "./flagsmith/client.js";
