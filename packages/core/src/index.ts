@@ -1,6 +1,7 @@
 export * from "./errors.js";
 export * from "./logger.js";
 export * from "./config/env.js";
+export * from "./config/dotenv.js";
 export * from "./policy/schema.js";
 export * from "./policy/load.js";
 export * from "./autonomy/autonomy.js";
@@ -9,6 +10,12 @@ export * from "./flagsmith/http.js";
 export * from "./flagsmith/client.js";
 export * from "./flagsmith/flag-service.js";
 export * from "./metrics/metrics.js";
+export * from "./metrics/source.js";
+export * from "./guardrails/health.js";
+export * from "./audit/audit-log.js";
+export * from "./rollout/state.js";
+export * from "./rollout/backend.js";
+export * from "./rollout/engine.js";
 
 import { type Env } from "./config/env.js";
 import { FlagsmithClient } from "./flagsmith/client.js";
