@@ -63,7 +63,7 @@ FlagGuard is being built in phases during the
 - [x] **Phase 2: Demo app.** A shop app wired to Flagsmith (local evaluation), a traffic simulator, per-cohort health metrics and chaos injection
 - [x] **Phase 3: Rollout engine.** Staged rollouts with approval gates, cohort-based health guardrails, automatic kill switch, audit log, `flagguard` CLI
 - [x] **Phase 4: Guard.** PR risk analysis (rules + AI), inline code suggestions that wrap the change, GitHub Action, `/flagguard` PR commands
-- [ ] **Phase 5: Dashboard.** Timeline, approvals and live health
+- [x] **Phase 5: Dashboard.** Local web UI: approvals, rollout stages, new-vs-old health charts, the agent's activity, and the agent loop built in
 - [ ] **Phase 6: Cleanup.** Stale-flag removal PRs
 
 ## Repository layout
@@ -133,6 +133,26 @@ Now click **Inject bug into new checkout** at http://localhost:3000. Within one 
 `fg audit fg_new_checkout` shows the full story: who proposed, who approved, and why the agent
 killed it. Drop `--offline` and the exact same commands drive Flagsmith via the Admin API.
 See the [CLI reference](packages/cli).
+
+## Dashboard
+
+```bash
+npm run flagguard -- --metrics http://localhost:3000 dashboard --watch   # http://localhost:4000
+```
+
+One screen for a rollout:
+
+- **Incident banner:** when the agent rolls a flag back, it says why, with the numbers.
+- **Approvals:** the agent's pending request with **Approve** and **Reject**. Approving re-checks health first.
+- **Rollout:** current exposure, the stage stepper, time in stage, and state in every environment.
+- **Health:** error rate and p95 latency for users on the **new code vs the old code** over the same
+  window, with the kill threshold and the current delta. A cohort with no traffic shows "no traffic",
+  never a fake 0.
+- **Activity:** every decision from the audit log, filterable by agent or people.
+
+`--watch` runs the agent loop inside the dashboard, so it checks health and pulls the kill switch on
+its own. It binds to localhost only, and state changes require a custom header (CSRF-safe), go through
+a single queue (a double-clicked Approve applies once), and are recorded with the approver's name.
 
 ## Configuration
 

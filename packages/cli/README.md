@@ -21,6 +21,7 @@ npm run flagguard -- --help     # from the repository root
 | `flagguard advance <flag>`                   | Move to the next stage now (you are the approver)                                                                | 🧑       |
 | `flagguard kill <flag>`                      | Kill switch: off for everyone in the environment                                                                 | 🧑       |
 | `flagguard watch <flag>`                     | Watches cohort health and kills the flag on a regression. `--propose` also proposes the next stage while healthy | 🤖       |
+| `flagguard dashboard`                        | Local web UI with approvals, rollout, health charts and activity. `--watch` runs the agent loop                  | 🤖 + 🧑  |
 | `flagguard audit [flag]`                     | What happened, who did it, and why                                                                               |          |
 
 Most commands take `-e, --env <name>`. It defaults to the first production environment in
