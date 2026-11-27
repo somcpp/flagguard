@@ -57,6 +57,9 @@ export interface LlmReviewResult {
   failovers: number;
 }
 
+/** Placeholder the model must use for the flag name inside suggested code. */
+export const FLAG_PLACEHOLDER = "__FLAG_NAME__";
+
 const SYSTEM_PROMPT = `You are FlagGuard, a release-safety reviewer. You review pull request diffs and decide
 whether the change should ship behind a Flagsmith feature flag with a gradual rollout.
 
@@ -68,15 +71,24 @@ Rules:
 - A deterministic rule engine has already scored the diff. Your riskScore may be HIGHER than
   the rule score if you see risk it missed. It is never used to lower the rule score.
 - Reference only files and line numbers that appear in the diff (numbers are new-file lines).
-- Flag names: lowercase snake_case, short, describing the behaviour (e.g. "new_checkout_flow").
-  Do not include any prefix; it is added for you.
-- Suggestions wrap the NEW behaviour behind the flag so that, with the flag off, the old
-  behaviour runs. Each suggestion replaces lines startLine..endLine (inclusive) of the new file,
-  and those lines must all be ADDED lines (marked "+") in the diff. Keep indentation. Reuse
-  the project's existing Flagsmith usage if visible; otherwise use
-  \`(await flagsmith.getIdentityFlags(userId)).isFeatureEnabled("<FLAG>")\` and keep it compiling.
-  Use the literal placeholder <FLAG> for the flag name. At most 3 suggestions, only where
-  they clearly help. Prefer zero suggestions to a wrong one.
+- flag.name: lowercase snake_case naming the BEHAVIOUR being released, 2-5 words, e.g.
+  "express_checkout" or "stripe_payments". Never generic words like "flag" or "feature", and
+  no prefix (one is added for you).
+- Suggestions make the NEW behaviour run only when the flag is on, and the old behaviour (or
+  a clean "not available" response for brand-new endpoints) when it is off:
+  * Put the flag check INSIDE the function or request handler, where a user/customer
+    identifier is in scope. Never wrap route registration, imports or module-level code.
+  * Reuse the project's existing feature-flag helper when the full file shows one (for
+    example a provider/service with an isEnabled(flag, userId) method). Only if there is none,
+    use \`(await flagsmith.getIdentityFlags(userId)).isFeatureEnabled(...)\`.
+  * Pass the NEW flag's name as the string literal "${FLAG_PLACEHOLDER}" (it is replaced for
+    you). Never pass another flag's name or a variable that holds one (e.g. an existing
+    flagName config value): that would gate the change on the wrong flag. Example: if the
+    file has \`await deps.provider.isEnabled(deps.flagName, userId)\`, write
+    \`await deps.provider.isEnabled("${FLAG_PLACEHOLDER}", customerId)\`.
+  * A suggestion replaces lines startLine..endLine (inclusive) of the new file, all of which
+    must be ADDED lines ("+") in the diff. Copy the original indentation exactly.
+  * The replacement must compile in context. At most 3 suggestions. Prefer zero to a wrong one.
 - Be concise and specific. No markdown in fields.
 
 Respond with JSON only:
@@ -84,11 +96,23 @@ Respond with JSON only:
  "flag": {"name", "description"}, "suggestions": [{"file", "startLine", "endLine", "replacement", "explanation"}]}`;
 
 const MAX_PATCH_CHARS = 60_000;
+const MAX_CONTEXT_CHARS = 40_000;
+
+/** Full new-file contents keyed by path, so the model sees helpers outside the diff hunks. */
+export type FileContext = Record<string, string>;
+
+function numbered(content: string): string {
+  return content
+    .split("\n")
+    .map((line, i) => `${String(i + 1).padStart(4)}  ${line}`)
+    .join("\n");
+}
 
 function buildPrompt(
   files: FileDiff[],
   rules: RuleAnalysis,
   pr: { title: string; body?: string | undefined },
+  context: FileContext = {},
 ): string {
   const flagged = new Set(rules.findings.map((f) => f.file));
   // Files the rules flagged first, so truncation drops the least relevant context.
@@ -109,6 +133,15 @@ function buildPrompt(
     sections.push(section);
   }
 
+  let contextBudget = MAX_CONTEXT_CHARS;
+  const contextSections: string[] = [];
+  for (const file of ordered) {
+    const content = context[file.path];
+    if (content === undefined || content.length > contextBudget) continue;
+    contextBudget -= content.length;
+    contextSections.push(`### ${file.path}\n${numbered(content)}`);
+  }
+
   const findings =
     rules.findings.length === 0
       ? "none"
@@ -126,7 +159,26 @@ Rule findings:
 ${findings}
 
 Diff (line numbers are new-file lines; "+" = added, "-" = removed):
-${sections.join("\n")}`;
+${sections.join("\n")}
+${contextSections.length > 0 ? `\nFull new version of changed files (for context only; line numbers match the diff):\n${contextSections.join("\n")}` : ""}`;
+}
+
+const leadingSpace = (line: string): number => /^[ \t]*/.exec(line)?.[0].length ?? 0;
+
+/**
+ * Models often drop the original indentation. Shift the replacement so its
+ * least-indented line lines up with the least-indented original line.
+ */
+export function reindent(replacement: string, originalLines: string[]): string {
+  const nonEmpty = (lines: string[]): string[] => lines.filter((l) => l.trim() !== "");
+  const original = nonEmpty(originalLines);
+  const lines = replacement.replace(/\n+$/, "").split("\n");
+  if (original.length === 0 || nonEmpty(lines).length === 0) return lines.join("\n");
+  const want = Math.min(...original.map(leadingSpace));
+  const have = Math.min(...nonEmpty(lines).map(leadingSpace));
+  if (have >= want) return lines.join("\n");
+  const pad = " ".repeat(want - have);
+  return lines.map((l) => (l.trim() === "" ? l : pad + l)).join("\n");
 }
 
 /** Keep only suggestions that replace a contiguous run of lines this PR added. */
@@ -138,15 +190,18 @@ export function validateSuggestions(
   for (const s of suggestions) {
     const file = files.find((f) => f.path === s.file);
     if (!file || s.endLine < s.startLine) continue;
-    const added = new Set(file.added.map((a) => a.line));
+    const added = new Map(file.added.map((a) => [a.line, a.content]));
+    const originals: string[] = [];
     let ok = true;
     for (let line = s.startLine; line <= s.endLine; line++) {
-      if (!added.has(line)) {
+      const content = added.get(line);
+      if (content === undefined) {
         ok = false;
         break;
       }
+      originals.push(content);
     }
-    if (ok) valid.push({ ...s });
+    if (ok) valid.push({ ...s, replacement: reindent(s.replacement, originals) });
   }
   return { valid, dropped: suggestions.length - valid.length };
 }
@@ -165,10 +220,11 @@ export async function reviewWithLlm(
   files: FileDiff[],
   rules: RuleAnalysis,
   pr: { title: string; body?: string | undefined },
+  context: FileContext = {},
 ): Promise<LlmReviewResult> {
   const response = await llm.complete({
     system: SYSTEM_PROMPT,
-    prompt: buildPrompt(files, rules, pr),
+    prompt: buildPrompt(files, rules, pr, context),
     json: true,
   });
   const review = LlmReviewSchema.parse(extractJson(response.text));

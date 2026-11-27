@@ -3,6 +3,9 @@ import { appendFile, readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import {
   analyzePullRequest,
+  type FileContext,
+  isGenericFlagName,
+  parseUnifiedDiff,
   createLlmClient,
   EnvSchema,
   type EngineResult,
@@ -44,6 +47,27 @@ export function llmFromEnv(
   return createLlmClient(parsed, { env, ...(logger ? { logger } : {}) });
 }
 
+const MAX_CONTEXT_FILES = 8;
+const MAX_CONTEXT_FILE_CHARS = 30_000;
+
+/** Full new-file contents of changed (non-deleted) files, for the AI's context. */
+async function fileContext(
+  files: ReturnType<typeof parseUnifiedDiff>,
+  read: (path: string) => Promise<string | null>,
+): Promise<FileContext> {
+  const paths = files
+    .filter((f) => f.status !== "deleted")
+    .slice(0, MAX_CONTEXT_FILES)
+    .map((f) => f.path);
+  const contents = await Promise.all(paths.map(read));
+  const context: FileContext = {};
+  paths.forEach((path, i) => {
+    const content = contents[i];
+    if (content && content.length <= MAX_CONTEXT_FILE_CHARS) context[path] = content;
+  });
+  return context;
+}
+
 async function readDiff(options: { diff?: string; base: string }): Promise<string> {
   if (options.diff === "-") {
     const chunks: Buffer[] = [];
@@ -81,8 +105,19 @@ export async function guardLocal(
   loadDotEnv();
   const { policy } = await loadPolicy(options.policy ? { explicitPath: options.policy } : {});
   const diff = await readDiff(options);
+  const context = await fileContext(parseUnifiedDiff(diff), async (path) => {
+    try {
+      const { stdout } = await run("git", ["show", `HEAD:${path}`], {
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      return stdout;
+    } catch {
+      return null;
+    }
+  });
   const report = await analyzePullRequest({
     diff,
+    context,
     pr: { title: options.title ?? "Local changes", branch: await currentBranch() },
     policy,
     llm: options.noAi ? null : llmFromEnv(process.env, logger),
@@ -162,18 +197,28 @@ async function onPullRequest(
   const pr = event.payload.pull_request;
   if (!pr) throw new Error("pull_request payload missing");
 
+  const diff = await github.getPullDiff(pr.number);
+  const context = await fileContext(parseUnifiedDiff(diff), (path) =>
+    github.getFileContent(path, pr.head.sha),
+  );
   const report = await analyzePullRequest({
-    diff: await github.getPullDiff(pr.number),
+    diff,
     pr: { title: pr.title, body: pr.body ?? undefined, number: pr.number, branch: pr.head.ref },
     policy,
     llm: llmFromEnv(env, logger),
+    context,
     logger,
   });
 
-  // Keep the flag name stable across pushes: reuse the one already announced on this PR.
+  // Keep the flag name stable across pushes: reuse the one already announced on this PR,
+  // unless it was a meaningless name, which gets replaced.
   const comments = await github.listIssueComments(pr.number);
   const known = findFlagInComments(comments);
-  if (report.flag && known) report.flag.name = known;
+  if (report.flag && known && !isGenericFlagName(known, policy.flags.prefix)) {
+    const fresh = report.flag.name;
+    report.flag.name = known;
+    for (const s of report.suggestions) s.replacement = s.replacement.replaceAll(fresh, known);
+  }
 
   const flagResults =
     ctx && report.flag
@@ -185,16 +230,22 @@ async function onPullRequest(
     (report.flag ? `\n${flagMarker(report.flag.name)}` : "");
   const { created } = await github.upsertComment(pr.number, GUARD_COMMENT_MARKER, body);
 
-  // Suggestions are posted once per PR, so every push doesn't duplicate them.
-  const alreadySuggested = comments.some((c) => c.body.includes("flagguard:suggested"));
+  // Suggestions are posted once per flag name, so every push doesn't duplicate them.
+  // If the flag was renamed, earlier suggestions are hidden as outdated (never deleted).
+  const suggestedMarker = report.flag ? `<!-- flagguard:suggested=${report.flag.name} -->` : "";
+  const alreadySuggested = comments.some((c) => c.body.includes(suggestedMarker));
   if (report.flag && report.suggestions.length > 0 && !alreadySuggested) {
     try {
+      for (const old of await github.listReviewComments(pr.number)) {
+        if (old.body.includes("<!-- flagguard:suggestion -->")) {
+          await github.minimizeAsOutdated(old.node_id);
+        }
+      }
       await github.suggest(pr.number, pr.head.sha, report.flag.name, report.suggestions);
       const guard = (await github.listIssueComments(pr.number)).find((c) =>
         c.body.includes(GUARD_COMMENT_MARKER),
       );
-      if (guard)
-        await github.updateComment(guard.id, `${guard.body}\n<!-- flagguard:suggested -->`);
+      if (guard) await github.updateComment(guard.id, `${guard.body}\n${suggestedMarker}`);
     } catch (error) {
       logger.warn("could not post code suggestions", { error: (error as Error).message });
     }

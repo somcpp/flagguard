@@ -52,6 +52,35 @@ export class GitHubClient {
     return comments;
   }
 
+  /** Raw file contents at a commit, or null if missing/binary/too large. */
+  async getFileContent(path: string, ref: string): Promise<string | null> {
+    try {
+      const encoded = path.split("/").map(encodeURIComponent).join("/");
+      const response = await this.request(
+        "GET",
+        `/repos/${this.repo}/contents/${encoded}?ref=${encodeURIComponent(ref)}`,
+        undefined,
+        { Accept: "application/vnd.github.raw" },
+      );
+      return await response.text();
+    } catch {
+      return null;
+    }
+  }
+
+  listReviewComments(number: number): Promise<ReviewComment[]> {
+    return this.json("GET", `/repos/${this.repo}/pulls/${number}/comments?per_page=100`);
+  }
+
+  /** Collapse a comment as outdated (non-destructive; it can be expanded again). */
+  async minimizeAsOutdated(nodeId: string): Promise<void> {
+    await this.json("POST", "/graphql", {
+      query:
+        "mutation($id: ID!) { minimizeComment(input: { subjectId: $id, classifier: OUTDATED }) { minimizedComment { isMinimized } } }",
+      variables: { id: nodeId },
+    });
+  }
+
   createComment(number: number, body: string): Promise<IssueComment> {
     return this.json("POST", `/repos/${this.repo}/issues/${number}/comments`, { body });
   }
@@ -135,6 +164,12 @@ export class GitHubClient {
     }
     return response;
   }
+}
+
+export interface ReviewComment {
+  id: number;
+  node_id: string;
+  body: string;
 }
 
 export interface GitHubEvent {

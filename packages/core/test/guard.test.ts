@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseUnifiedDiff } from "../src/diff/parse.js";
-import { analyzePullRequest, toFlagName } from "../src/guard/guard.js";
+import { analyzePullRequest, isGenericFlagName, toFlagName } from "../src/guard/guard.js";
 import { GUARD_COMMENT_MARKER, renderGuardComment } from "../src/guard/comment.js";
 import type { LlmClient, LlmRequest, LlmResponse } from "../src/llm/client.js";
 import { defaultPolicy } from "../src/policy/load.js";
@@ -262,5 +262,103 @@ describe("renderGuardComment", () => {
       policy,
     });
     expect(renderGuardComment({ report, policy })).toContain("No flag needed");
+  });
+});
+
+describe("live-PR regressions", () => {
+  const policy = defaultPolicy();
+  const pr = { title: "Add one-click express checkout", branch: "feat/express-checkout" };
+
+  it("rejects generic flag names and falls back to the branch name", async () => {
+    for (const name of ["flag", "__FLAG_NAME__", "<FLAG>", "feature", "fg_flag"]) {
+      const llm = new FakeLlm({ riskScore: 80, summary: "s", flag: { name, description: "d" } });
+      const report = await analyzePullRequest({ diff: DIFF, pr, policy, llm });
+      expect(report.flag?.name, name).toBe("fg_express_checkout");
+    }
+  });
+
+  it("replaces the placeholder and restores lost indentation in suggestions", async () => {
+    const llm = new FakeLlm({
+      riskScore: 80,
+      summary: "s",
+      flag: { name: "stripe_payments", description: "d" },
+      suggestions: [
+        {
+          file: "src/checkout/pay.ts",
+          startLine: 2,
+          endLine: 3,
+          replacement:
+            'if (!isEnabled("__FLAG_NAME__")) return legacyPay(order);\nconst intent = 1;',
+          explanation: "wrap",
+        },
+      ],
+    });
+    const report = await analyzePullRequest({ diff: DIFF, pr, policy, llm });
+    expect(report.suggestions[0]?.replacement).toBe(
+      '  if (!isEnabled("fg_stripe_payments")) return legacyPay(order);\n  const intent = 1;',
+    );
+  });
+
+  it("gives the AI the full changed files so it can reuse existing helpers", async () => {
+    const llm = new FakeLlm({
+      riskScore: 80,
+      summary: "s",
+      flag: { name: "stripe_payments", description: "d" },
+    });
+    await analyzePullRequest({
+      diff: DIFF,
+      pr,
+      policy,
+      llm,
+      context: {
+        "src/checkout/pay.ts":
+          "import { flags } from './flags';\nexport async function pay(order) {}",
+      },
+    });
+    expect(llm.requests[0]?.prompt).toContain("Full new version of changed files");
+    expect(llm.requests[0]?.prompt).toContain("   1  import { flags } from './flags';");
+  });
+});
+
+describe("isGenericFlagName", () => {
+  it("separates meaningful names from placeholders", () => {
+    expect(isGenericFlagName("fg_flag", "fg_")).toBe(true);
+    expect(isGenericFlagName("__FLAG_NAME__")).toBe(true);
+    expect(isGenericFlagName("abc")).toBe(true);
+    expect(isGenericFlagName("fg_express_checkout", "fg_")).toBe(false);
+  });
+});
+
+describe("suggestions must gate on the new flag", () => {
+  it("drops suggestions that reuse another flag instead of the new one", async () => {
+    const llm = new FakeLlm({
+      riskScore: 80,
+      summary: "s",
+      flag: { name: "stripe_payments", description: "d" },
+      suggestions: [
+        {
+          file: "src/checkout/pay.ts",
+          startLine: 2,
+          endLine: 2,
+          replacement: "if (await isEnabled(deps.flagName)) x();",
+          explanation: "wrong flag",
+        },
+        {
+          file: "src/checkout/pay.ts",
+          startLine: 3,
+          endLine: 3,
+          replacement: 'if (await isEnabled("__FLAG_NAME__")) y();',
+          explanation: "right flag",
+        },
+      ],
+    });
+    const report = await analyzePullRequest({
+      diff: DIFF,
+      pr: { title: "t" },
+      policy: defaultPolicy(),
+      llm,
+    });
+    expect(report.suggestions.map((s) => s.explanation)).toEqual(["right flag"]);
+    expect(report.droppedSuggestions).toBe(1);
   });
 });

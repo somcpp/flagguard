@@ -2,7 +2,12 @@ import { type FileDiff, parseUnifiedDiff } from "../diff/parse.js";
 import type { LlmClient, LlmUsage } from "../llm/client.js";
 import { type Logger, silentLogger } from "../logger.js";
 import type { Policy } from "../policy/schema.js";
-import { type CodeSuggestion, reviewWithLlm } from "../risk/llm-review.js";
+import {
+  type CodeSuggestion,
+  FLAG_PLACEHOLDER,
+  type FileContext,
+  reviewWithLlm,
+} from "../risk/llm-review.js";
 import { analyzeWithRules, type RiskFinding } from "../risk/rules.js";
 
 export interface PullRequestInfo {
@@ -47,6 +52,28 @@ export function toFlagName(raw: string, prefix: string): string {
   return `${prefix}${slug || "risky_change"}`;
 }
 
+const GENERIC_NAMES = new Set([
+  "flag",
+  "feature",
+  "feature_flag",
+  "new_feature",
+  "flag_name",
+  "change",
+  "risky_change",
+  "toggle",
+  "my_flag",
+  "test",
+]);
+
+/** True for names that don't describe a behaviour (often an echoed placeholder). */
+export function isGenericFlagName(name: string, prefix = ""): boolean {
+  const bare = (prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return bare.length < 4 || GENERIC_NAMES.has(bare) || bare.includes("flag_name");
+}
+
 function fallbackFlagName(pr: PullRequestInfo): string {
   const fromBranch = pr.branch?.split("/").pop();
   return fromBranch && fromBranch !== "main" ? fromBranch : pr.title;
@@ -69,6 +96,8 @@ export async function analyzePullRequest(input: {
   pr: PullRequestInfo;
   policy: Policy;
   llm?: LlmClient | null;
+  /** Full new-file contents of changed files, so the AI sees helpers outside the hunks. */
+  context?: FileContext;
   logger?: Logger;
 }): Promise<GuardReport> {
   const logger = input.logger ?? silentLogger;
@@ -87,10 +116,23 @@ export async function analyzePullRequest(input: {
   let llmError: string | undefined;
   if (input.llm && rules.consideredFiles.length > 0) {
     try {
-      const result = await reviewWithLlm(input.llm, files, rules, input.pr);
+      const result = await reviewWithLlm(input.llm, files, rules, input.pr, input.context);
       const score = Math.max(rules.score, result.review.riskScore);
       const risky = score >= threshold;
-      const flagName = toFlagName(result.review.flag.name, prefix);
+      const proposed = result.review.flag.name;
+      const flagName = toFlagName(
+        isGenericFlagName(proposed, prefix) ? fallbackFlagName(input.pr) : proposed,
+        prefix,
+      );
+      const named = result.suggestions.map((s) => ({
+        ...s,
+        replacement: s.replacement
+          .replaceAll(FLAG_PLACEHOLDER, flagName)
+          .replaceAll("<FLAG>", flagName),
+      }));
+      // A suggestion that never mentions the new flag cannot gate the change on it
+      // (models like to copy an existing flag variable instead), so it is dropped.
+      const suggestions = named.filter((s) => s.replacement.includes(flagName));
       const llmFindings: RiskFinding[] = result.review.risks.map((r) => ({
         ruleId: `ai-${r.severity}`,
         description: r.reason,
@@ -109,13 +151,8 @@ export async function analyzePullRequest(input: {
         summary: result.review.summary,
         findings: [...rules.findings, ...llmFindings],
         flag: risky ? { name: flagName, description: result.review.flag.description } : null,
-        suggestions: risky
-          ? result.suggestions.map((s) => ({
-              ...s,
-              replacement: s.replacement.replaceAll("<FLAG>", flagName),
-            }))
-          : [],
-        droppedSuggestions: result.droppedSuggestions,
+        suggestions: risky ? suggestions : [],
+        droppedSuggestions: result.droppedSuggestions + (named.length - suggestions.length),
         usage: { ...result.usage, model: result.model, failovers: result.failovers },
         estimatedMinutesSaved: risky
           ? 15 + 5 * result.suggestions.length + 3 * input.policy.environments.length
