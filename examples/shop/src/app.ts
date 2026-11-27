@@ -5,6 +5,7 @@ import {
   type Chaos,
   type CheckoutDeps,
   CheckoutError,
+  expressCheckout,
   legacyCheckout,
   newCheckout,
   NO_CHAOS,
@@ -92,6 +93,23 @@ export function createApp(deps: AppDeps): Hono {
           error.status,
         );
       }
+      throw error;
+    }
+  });
+
+  const ExpressRequest = CheckoutRequest.extend({
+    customerId: z.string().min(1),
+    paymentMethodId: z.string().min(1),
+  });
+
+  app.post("/api/checkout/express", async (c) => {
+    const parsed = ExpressRequest.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: z.prettifyError(parsed.error) }, 400);
+    const { items, customerId, paymentMethodId } = parsed.data;
+    try {
+      return c.json(await expressCheckout(items, { customerId, paymentMethodId }));
+    } catch (error) {
+      if (error instanceof CheckoutError) return c.json({ error: error.message }, error.status);
       throw error;
     }
   });
