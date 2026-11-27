@@ -54,9 +54,7 @@ function fallbackFlagName(pr: PullRequestInfo): string {
 
 function rulesSummary(findings: RiskFinding[]): string {
   const ids = [...new Set(findings.map((f) => f.description))];
-  return ids.length === 0
-    ? "No risky patterns found."
-    : `Matched risk rules: ${ids.join("; ")}.`;
+  return ids.length === 0 ? "No risky patterns found." : `Matched risk rules: ${ids.join("; ")}.`;
 }
 
 /**

@@ -85,6 +85,29 @@ blocked, denied or failed action is recorded with its actor (`agent` or `human:<
 plain-language reason and the health numbers behind it. Health checks are logged only when
 the verdict changes, so the log stays readable.
 
+## Guard: reviewing pull requests
+
+```mermaid
+flowchart LR
+  Diff[PR diff] --> Parse[parseUnifiedDiff]
+  Parse --> Rules[Rule engine<br/>flagguard.yml]
+  Parse --> AI[LLM review<br/>Gemini / OpenAI-compatible]
+  Rules -- score floor --> Score{max}
+  AI -- can only raise --> Score
+  Score -->|≥ threshold| Flag[Create flag<br/>on outside prod]
+  AI --> Sugg[Validated suggestions<br/>added lines only]
+  Flag & Sugg --> Comment[PR report + inline suggestions]
+```
+
+- **Deterministic floor.** Rule matches can't be argued away by the model. The AI adds
+  context, extra risks and a name. It never removes risk.
+- **Fail safe.** Retryable provider errors (429/5xx) are retried with backoff. Anything else,
+  including malformed JSON, falls back to the rules-only review, and the report says so.
+- **Grounded suggestions.** A suggestion must replace a contiguous run of lines the PR _added_.
+  Anything else is dropped before posting, so a hallucinated line number can't land on unrelated code.
+- **Stateless in CI.** Runners don't keep `.flagguard/`, so the flag name is stored in the PR
+  comment (`<!-- flagguard:flag=… -->`) and rollout state is read live from Flagsmith.
+
 ## How a rollout maps onto Flagsmith
 
 For each feature and environment:

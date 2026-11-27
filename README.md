@@ -62,7 +62,7 @@ FlagGuard is being built in phases during the
 - [x] **Phase 1: Core.** Policy schema, autonomy engine, typed Flagsmith client, rollout primitives, kill switch
 - [x] **Phase 2: Demo app.** A shop app wired to Flagsmith (local evaluation), a traffic simulator, per-cohort health metrics and chaos injection
 - [x] **Phase 3: Rollout engine.** Staged rollouts with approval gates, cohort-based health guardrails, automatic kill switch, audit log, `flagguard` CLI
-- [ ] **Phase 4: Guard.** PR risk analysis (rules + LLM), code wrapping, GitHub Action, `/flagguard approve`
+- [x] **Phase 4: Guard.** PR risk analysis (rules + AI), inline code suggestions that wrap the change, GitHub Action, `/flagguard` PR commands
 - [ ] **Phase 5: Dashboard.** Timeline, approvals and live health
 - [ ] **Phase 6: Cleanup.** Stale-flag removal PRs
 
@@ -151,6 +151,47 @@ autonomy:
     advance_rollout: approval # "auto" is rejected unless allowUnsafe: true
     kill_flag: auto
 ```
+
+## Use it on your pull requests (GitHub Action)
+
+```yaml
+# .github/workflows/flagguard.yml
+name: FlagGuard
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+jobs:
+  guard:
+    if: github.event_name == 'pull_request' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/flagguard'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: somcpp/flagguard@main
+        with:
+          flagsmith-api-key: ${{ secrets.FLAGSMITH_API_KEY }} # Organisation API key
+          flagsmith-project-id: ${{ secrets.FLAGSMITH_PROJECT_ID }}
+          llm-api-key: ${{ secrets.LLM_API_KEY }} # optional: Gemini or any OpenAI-compatible API
+```
+
+On every pull request FlagGuard:
+
+1. **Scores risk** with your `flagguard.yml` rules (deterministic, explainable), then asks the AI
+   for a second opinion. **The AI can raise the score but never lower it**, and if the AI is
+   unavailable the review falls back to rules.
+2. **Creates the flag** in Flagsmith when the change is risky: on in non-production, off in production.
+3. **Posts one living report** (updated on every push), plus **one-click code suggestions** that
+   wrap the new code in the flag. Suggestions are only posted on lines the PR added.
+4. **Takes commands** from owners, members and collaborators:
+   `/flagguard status`, `/flagguard approve` (next stage, health-checked), `/flagguard reject`,
+   `/flagguard kill`.
+
+Without Flagsmith secrets (for example on PRs from forks) it reviews and comments, but changes nothing.
+Run the same review locally with `flagguard guard --base main`.
 
 ## Contributing
 
