@@ -18,11 +18,23 @@ inputs:
   flagsmith-api-url:
     description: Flagsmith API URL (self-hosted only).
     default: https://api.flagsmith.com
+  groq-api-keys:
+    description: Comma-separated Groq keys. With any *-api-keys input, keyhopper rotates keys and fails over between providers.
+    required: false
+  gemini-api-keys:
+    description: Comma-separated Gemini keys (fallback after Groq by default).
+    required: false
+  openrouter-api-keys:
+    description: Comma-separated OpenRouter keys.
+    required: false
+  llm-providers:
+    description: Provider order for keyhopper, e.g. "groq,gemini".
+    required: false
   llm-provider:
-    description: gemini | openai-compatible
-    default: gemini
+    description: auto | keyhopper | gemini | openai-compatible
+    default: auto
   llm-api-key:
-    description: LLM API key. Without it FlagGuard uses rules only.
+    description: Single LLM API key (alternative to the *-api-keys inputs). Without any key FlagGuard uses rules only.
     required: false
   llm-model:
     description: LLM model name.
@@ -60,6 +72,10 @@ runs:
         FLAGSMITH_PROJECT_ID: ${{ inputs.flagsmith-project-id }}
         FLAGSMITH_API_URL: ${{ inputs.flagsmith-api-url }}
         LLM_PROVIDER: ${{ inputs.llm-provider }}
+        GROQ_API_KEYS: ${{ inputs.groq-api-keys }}
+        GEMINI_API_KEYS: ${{ inputs.gemini-api-keys }}
+        OPENROUTER_API_KEYS: ${{ inputs.openrouter-api-keys }}
+        KEYHOPPER_PROVIDERS: ${{ inputs.llm-providers }}
         LLM_API_KEY: ${{ inputs.llm-api-key }}
         LLM_MODEL: ${{ inputs.llm-model }}
         LLM_BASE_URL: ${{ inputs.llm-base-url }}

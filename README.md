@@ -89,8 +89,9 @@ npm run check        # format, lint, typecheck, test
 ```
 
 Copy `.env.example` to `.env` and fill in your Flagsmith **Organisation API key**
-(Organisation Settings → API Keys) and project ID. An LLM key is optional; without one
-FlagGuard uses rule-based risk detection.
+(Organisation Settings → API Keys) and project ID. AI keys are optional: add
+comma-separated `GROQ_API_KEYS` and/or `GEMINI_API_KEYS`, or nothing for rules-only
+reviews. Run `npm run flagguard -- doctor` to check every key and model.
 
 ## Try the demo shop
 
@@ -175,14 +176,18 @@ jobs:
         with:
           flagsmith-api-key: ${{ secrets.FLAGSMITH_API_KEY }} # Organisation API key
           flagsmith-project-id: ${{ secrets.FLAGSMITH_PROJECT_ID }}
-          llm-api-key: ${{ secrets.LLM_API_KEY }} # optional: Gemini or any OpenAI-compatible API
+          # optional AI review; keys are comma-separated, keyhopper fails over between them
+          groq-api-keys: ${{ secrets.GROQ_API_KEYS }}
+          gemini-api-keys: ${{ secrets.GEMINI_API_KEYS }}
 ```
 
 On every pull request FlagGuard:
 
 1. **Scores risk** with your `flagguard.yml` rules (deterministic, explainable), then asks the AI
-   for a second opinion. **The AI can raise the score but never lower it**, and if the AI is
-   unavailable the review falls back to rules.
+   for a second opinion. **The AI can raise the score but never lower it**. Through
+   [keyhopper](https://github.com/somcpp/keyhopper), a rate-limited key or overloaded provider
+   (e.g. Groq) hops to the next key, model or provider (e.g. Gemini), and only if every one is
+   down does the review fall back to rules.
 2. **Creates the flag** in Flagsmith when the change is risky: on in non-production, off in production.
 3. **Posts one living report** (updated on every push), plus **one-click code suggestions** that
    wrap the new code in the flag. Suggestions are only posted on lines the PR added.

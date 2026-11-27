@@ -101,6 +101,10 @@ flowchart LR
 
 - **Deterministic floor.** Rule matches can't be argued away by the model. The AI adds
   context, extra risks and a name. It never removes risk.
+- **Multi-key failover.** With [keyhopper](https://github.com/somcpp/keyhopper), a 429 or
+  overload on one key moves to the next key, model and provider (Groq → Gemini), resting each
+  limited key for exactly the time the provider asks. The report names which provider answered
+  and how many failovers it took.
 - **Fail safe.** Retryable provider errors (429/5xx) are retried with backoff. Anything else,
   including malformed JSON, falls back to the rules-only review, and the report says so.
 - **Grounded suggestions.** A suggestion must replace a contiguous run of lines the PR _added_.

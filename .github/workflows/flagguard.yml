@@ -29,6 +29,7 @@ jobs:
         with:
           flagsmith-api-key: ${{ secrets.FLAGSMITH_API_KEY }}
           flagsmith-project-id: ${{ secrets.FLAGSMITH_PROJECT_ID }}
-          llm-api-key: ${{ secrets.LLM_API_KEY }}
-          llm-model: ${{ vars.LLM_MODEL }}
+          # keyhopper: rotate keys and fail over Groq → Gemini when one is rate-limited or overloaded
+          groq-api-keys: ${{ secrets.GROQ_API_KEYS }}
+          gemini-api-keys: ${{ secrets.GEMINI_API_KEYS }}
           policy: examples/shop/flagguard.yml
