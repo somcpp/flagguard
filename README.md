@@ -60,7 +60,7 @@ FlagGuard is being built in phases during the
 [Flagsmith hackathon](https://www.wemakedevs.org/hackathons/flagsmith) (Track 02: AI Agents & Feature Flags).
 
 - [x] **Phase 1: Core.** Policy schema, autonomy engine, typed Flagsmith client, rollout primitives, kill switch
-- [ ] **Phase 2: Demo app.** A shop app wired to Flagsmith, a traffic simulator and per-cohort metrics
+- [x] **Phase 2: Demo app.** A shop app wired to Flagsmith (local evaluation), a traffic simulator, per-cohort health metrics and chaos injection
 - [ ] **Phase 3: Rollout engine.** Staged rollouts, health guardrails, audit log, CLI
 - [ ] **Phase 4: Guard.** PR risk analysis (rules + LLM), code wrapping, GitHub Action, `/flagguard approve`
 - [ ] **Phase 5: Dashboard.** Timeline, approvals and live health
@@ -70,7 +70,9 @@ FlagGuard is being built in phases during the
 
 ```
 packages/
-  core/        @flagguard/core: policy, autonomy rules, Flagsmith client, rollout primitives
+  core/        @flagguard/core: policy, autonomy rules, Flagsmith client, rollout primitives, metrics
+examples/
+  shop/        demo storefront + traffic simulator (the app FlagGuard protects)
 docs/
   architecture.md
 flagguard.example.yml   annotated policy file
@@ -88,6 +90,18 @@ npm run check        # format, lint, typecheck, test
 Copy `.env.example` to `.env` and fill in your Flagsmith **Organisation API key**
 (Organisation Settings → API Keys) and project ID. An LLM key is optional; without one
 FlagGuard uses rule-based risk detection.
+
+## Try the demo shop
+
+```bash
+npm run build
+npm run shop      # http://localhost:3000
+npm run traffic   # second terminal: steady checkout traffic
+```
+
+Works offline out of the box. Add `FLAGSMITH_SERVER_KEY` to `.env` to evaluate the flag with
+Flagsmith. Click **Inject bug into new checkout** and watch the new-checkout cohort's error
+rate climb while the legacy cohort stays healthy. See [examples/shop](examples/shop).
 
 ## Configuration
 

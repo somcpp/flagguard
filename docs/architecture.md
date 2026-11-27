@@ -63,6 +63,39 @@ segment override:     flagguard-rollout-<env>   (feature-specific segment)
 > Percentage splits apply to **identified** users. Anonymous evaluations fall back to the
 > environment default (off until 100%), which is the safe behaviour.
 
+## Health signal: cohort metrics
+
+Apps report request outcomes per **cohort**: `treatment` (flag on, new code) and
+`control` (flag off, old code). They expose a sliding-window snapshot at
+`GET /flagguard/metrics/:flag`:
+
+```json
+{
+  "flag": "fg_new_checkout",
+  "windowMs": 120000,
+  "generatedAt": "2026-11-27T13:45:00.000Z",
+  "treatment": {
+    "requests": 108,
+    "errors": 17,
+    "errorRate": 0.157,
+    "p50LatencyMs": 61,
+    "p95LatencyMs": 312
+  },
+  "control": {
+    "requests": 231,
+    "errors": 0,
+    "errorRate": 0,
+    "p50LatencyMs": 91,
+    "p95LatencyMs": 108
+  }
+}
+```
+
+Comparing cohorts over the _same_ window separates "the new code is broken" from
+"everything is slow right now", so the kill switch doesn't fire on platform-wide
+incidents the flag can't fix. `SlidingWindowMetrics` in `@flagguard/core` implements the
+recorder, and the demo shop shows how to wire it into a request handler.
+
 ## Safety invariants (enforced in code)
 
 1. Risk-increasing actions (`start_rollout`, `advance_rollout`, `complete_rollout`,
